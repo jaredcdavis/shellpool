@@ -16,8 +16,8 @@ and better control over when forking occurs:
  - **Exit code**.  Yep, you get it.
 
  - **Interruption**.  Interrupts are handled gracefully.  After you
-   interrupt (e.g., Control C), you can @(':continue') to keep running
-   the program, or @(':q') to send the sub-program a KILL signal.
+   interrupt (e.g., Control C), you can `:continue` to keep running
+   the program, or `:q` to send the sub-program a KILL signal.
 
  - **Forking**.  Sub-programs are launched with a separate shell, so
    you can avoid
@@ -53,7 +53,7 @@ and better control over when forking occurs:
 
 Shellpool is Copyright (C) 2014 [Kookamara
 LLC](http://www.kookamara.com/) and released under an [MIT style
-license](LICENSE.md).
+license](LICENSE).
 
 Shellpool is a successor to "tshell", a mechanism for running external
 programs from [Clozure Common Lisp](http://ccl.clozure.com/).  Tshell
