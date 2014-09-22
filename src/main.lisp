@@ -30,14 +30,6 @@
 ;
 ; Original author: Jared Davis <jared@kookamara.com>
 
-(in-package :asdf-user)
+(in-package :shellpool)
 
-(defsystem "shellpool"
-  :description "Interface from Common Lisp to External Programs"
-  :version "0.0.1"
-  :author "Kookamara LLC"
-  :license "MIT"
-  :depends-on (:bordeaux-threads)
-  :components ((:file "src/packages")
-               (:file "src/main")))
 
