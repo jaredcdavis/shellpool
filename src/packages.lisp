@@ -34,6 +34,11 @@
 
 (defpackage :shellpool
   (:use :cl)
+  (:export #:*debug*
+           #:start
+           #:run
+           #:run-background
+           )
   )
 
 
