@@ -33,23 +33,23 @@
 (in-package :shellpool)
 
 
-; Primitive debugging/logging scheme.  Change *debug* to T to get verbose
-; debugging messages.
+; ----------------------------------------------------------------------------
+; Simple Utilities
 
-(defvar *debug* nil)
+(defvar *debug* nil
+  "Change to T for verbose debugging messages.")
 
 (defmacro debug (&rest args)
+  "Like (format t ...) but only prints if debugging is enabled."
   `(when *debug*
      (format t "Shellpool: ")
      (format t ,@args)
      (force-output)))
 
-
-; Simple string utilities.
-
 (defconstant nl
-  ;; A string with a newline character.
-  (coerce (list #\Newline) 'string))
+  (coerce (list #\Newline) 'string)
+  "Newline as a string.  Convenient in string concatenations as a way to insert
+   newlines without having to ruin your indenting.")
 
 (defun strprefixp-impl (x y xn yn xlen ylen)
   (declare (type string x y)
@@ -67,10 +67,19 @@
          nil)))
 
 (defun strprefixp (x y)
-  ;; Determines if the string X comes at the start of the string Y.
-  ;; For instance, (strprefixp "foo" "foobar") is true.
+  "Determines if the string X comes at the start of the string Y.
+   Example:  (strprefixp \"foo\" \"foobar\") is true."
   (declare (type string x y))
   (strprefixp-impl x y 0 0 (length x) (length y)))
+
+(defun strsuffixp (x y)
+  "Determines if the string X comes at the end of the string Y.
+   Example: (strsuffixp \"bar\" \"foobar\") is true."
+  (declare (type string x y))
+  (let* ((xlen (length x))
+         (ylen (length y)))
+    (and (<= xlen ylen)
+         (strprefixp-impl x y 0 (- ylen xlen) xlen ylen))))
 
 (defun strpos-fast (x y n xlen ylen)
   (declare (type string x y)
@@ -83,31 +92,107 @@
          (strpos-fast x y (the fixnum (+ 1 n)) xlen ylen))))
 
 (defun strpos (x y)
-  ;; Determines the position of the first occurrence of the substring X in the
-  ;; string Y, or returns NIL if there is no such occurrence.
+  "Determines the position of the first occurrence of the substring X in the
+   string Y, or returns NIL if there is no such occurrence."
   (declare (type string x y))
   (strpos-fast x y 0 (length x) (length y)))
 
-(defun strsuffixp (x y)
-  ;; Determines if the string X comes at the end of the string Y.
-  ;; For instance, (strsuffixp "bar" "foobar") is true.
-  (declare (type string x y))
-  (let* ((xlen (length x))
-         (ylen (length y)))
-    (and (<= xlen ylen)
-         (strprefixp-impl x y 0 (- ylen xlen) xlen ylen))))
 
 
 
+; ----------------------------------------------------------------------------
+; Shells
+
+; BOZO we probably don't really need separate KILLER and BACKGROUND shells.  We
+; could probably fuse them together into a dedicated AUX shell pretty easily.
+
+(defstruct state
+
+  ;; LOCK is a lock that protects access to the KILLER and BACKGROUND shells.
+  ;; It must also be acquired whenever modifying RUNNERS.
+  (lock)
+
+  ;; KILLER is a dedicated bash process that is used to send kill signals to
+  ;; subsidiary processes to support interrupts.  Note that we only need a
+  ;; single KILLER shell to be able to kill any number of running processes.
+  ;; Locking convention: the LOCK must be held while using the KILLER thread.
+  ;; We expect uses of KILLER to take very little time (it just sends a "kill"
+  ;; signal to some other process), so a single process should suffice.
+  (killer)
+
+  ;; BACKGROUND is a dedicated bash process that is used to launch programs in
+  ;; the background when RUN-BACKGROUND is called.  Since background processes
+  ;; are of a "fire and forget" nature, i.e., we invoke commands like "firefox
+  ;; &", we think a single background shell should suffice.  Locking
+  ;; convention: the LOCK must be held while using the BACKGROUND thread.
+  (background)
+
+  ;; SEM is a semaphore that governs access to the RUNNERS.  Invariant: the
+  ;; count of the semaphore should always agree exactly with (LENGTH RUNNERS).
+  ;; See GET-RUNNER, which properly waits for the next free runner.
+  (sem)
+
+  ;; RUNNERS are an ordinary list of bash processes that are available for
+  ;; running foreground shell commands with RUN.
+  (runners))
+
+(defparameter *state*
+  (make-state :lock       (bt:make-lock)
+              :killer     nil
+              :background nil
+              :sem        (bt-sem:make-semaphore)
+              :runners    nil))
+
+(defmacro with-runner (name &rest forms)
+  `(let ((,name nil))
+     (unwind-protect
+         (progn
+           (unless (bt-sem:wait-on-semaphore (state-sem *state*))
+             (error "Failed to acquire runner"))
+           (bt:with-lock-held ((state-lock *state*))
+                              (unless (consp (state-runners *state*))
+                                ;; Should never happen.  The number of free runners
+                                ;; should always agree with the value of the
+                                ;; semaphore.
+                                (error "Our turn to go, but no runners are available?"))
+                              (setq ,name (pop (state-runners *state*))))
+           ;; Got the runner, so use it to run stuff.
+           ,@forms)
+       ;; Clean up by putting the runner back.
+       (bt:with-lock-held ((state-lock *state*))
+                          (push ,name (state-runners *state*))
+                          (bt-sem:signal-semaphore (state-sem *state*))))))
+
+(defun make-new-runner ()
+  (ccl:run-program "/bin/bash" nil
+                   :wait   nil
+                   :input  :stream
+                   :output :stream
+                   :error  :stream))
+
+(defun add-runners (n)
+  (bt:with-lock-held ((state-lock *state*))
+                     (loop for i from 1 to n do
+                           (push (make-new-runner) (state-runners *state*)))
+                     (bt-sem:signal-semaphore (state-sem *state*) n)))
 
 
+(defun shell-alive-p (x)
+  (and (ccl::external-process-p x)
+       (eq (ccl:external-process-status x) :running)))
 
-; We look for certain strings to know when the program's output ends.  This is
-; horribly gross, but in practice it should work.
 
-(defconstant +exit-line+   "HORRIBLE_STRING_TO_DETECT_END_OF_SHELLPOOL_COMMAND")
-(defconstant +status-line+ "HORRIBLE_STRING_TO_DETECT_SHELLPOOL_EXIT_STATUS")
-(defconstant +pid-line+    "SHELLPOOL_PID")
+;; (defun start (&key (runners '1))
+;;   (let ((state *state*))
+;;     (when (state-lock state)
+;;       (
+      
+      
+;;       (add-runners runners)
+;;     (setq *state*
+;;           (start-
+  
+  
 
 
 
@@ -117,29 +202,31 @@
 ;  - background-thread runs programs in the background (doesn't wait)
 ;  - killer-thread is used to kill programs
 
-(defvar *runner-thread* nil)
-(defvar *killer-thread* nil)
-(defvar *background-thread* nil)
+(defvar *runner-shell* nil)
+;(defvar *killer-shell* nil)
+;(defvar *background-shell* nil)
 
 
 (defun stop ()
   ;; Stops any Shellpool threads that are running.
 
   (progn (ignore-errors
-           (when *runner-thread*
-             (debug "STOP: stopping *runner-thread*~%")
-             (ccl:signal-external-process *runner-thread* 9)
-             (setq *runner-thread* nil)))
+           (when *runner-shell*
+             (debug "STOP: stopping *runner-shell*~%")
+             (ccl:signal-external-process *runner-shell* 9)
+             (setq *runner-shell* nil)))
+         ;; BOZO need lock
          (ignore-errors
-           (when *killer-thread*
-             (debug "STOP: stopping *killer-thread*~%")
-             (ccl:signal-external-process *killer-thread* 9)
-             (setq *killer-thread* nil)))
+           (when (state-killer *state*)
+             (debug "STOP: stopping killer shell~%")
+             (ccl:signal-external-process (state-killer *state*) 9)
+             (setq (state-killer *state*) nil)))
+         ;; BOZO need lock
          (ignore-errors
-           (when *background-thread*
-             (debug "STOP: stopping *background-thread*~%")
-             (ccl:signal-external-process *background-thread* 9)
-             (setq *background-thread* nil)))
+           (when (state-background *state*)
+             (debug "STOP: stopping background shell~%")
+             (ccl:signal-external-process background-shell 9)
+             (setq background-shell nil)))
          nil))
 
 (defun start ()
@@ -147,75 +234,63 @@
 
   (progn (debug "START: killing old processes~%")
          (stop)
-         (debug "START: starting *runner-thread*~%")
-         (setf *runner-thread* (ccl:run-program "/bin/bash" nil
+         (debug "START: starting *runner-shell*~%")
+         (setf *runner-shell* (ccl:run-program "/bin/bash" nil
                                           :wait nil
                                           :input :stream
                                           :output :stream
                                           :error :stream))
-         (debug "START: starting *killer-thread*~%")
-         (setf *killer-thread* (ccl:run-program "/bin/bash" nil
-                                                 :wait nil
-                                                 :input :stream
-                                                 :output :stream
-                                                 :error :stream))
-         (debug "START: starting *background-thread*~%")
-         (setf *background-thread* (ccl:run-program "/bin/bash" nil
-                                             :wait nil
-                                             :input :stream
-                                             :output nil
-                                             :error nil))
+         (debug "START: starting killer shell~%")
+         ;; bozo need lock
+         (setf (state-killer *state*)
+               (ccl:run-program "/bin/bash" nil
+                                :wait nil
+                                :input  :stream
+                                :output :stream
+                                :error  :stream))
+         (debug "START: starting *background-shell*~%")
+         ;; bozo need lock
+         (setf (state-background state)
+               (ccl:run-program "/bin/bash" nil
+                                :wait nil
+                                :input :stream
+                                :output nil
+                                :error nil))
+         (add-runners 1)
          nil))
 
 (defun check-threads-alive ()
-  (and (ccl::external-process-p *runner-thread*)
-       (ccl::external-process-p *killer-thread*)
-       (ccl::external-process-p *background-thread*)
-       (eq (ccl:external-process-status *runner-thread*) :running)
-       (eq (ccl:external-process-status *killer-thread*) :running)
-       (eq (ccl:external-process-status *background-thread*) :running)))
+  (and (shell-alive-p *runner-shell*)
+       ;; BOZO need lock
+       (shell-alive-p (state-background *state*))
+       (shell-alive-p (state-killer *state*))))
 
-(defun maybe-start ()
-  ;; Stops any tshell processes and starts new ones.
-  (unless (check-threads-alive)
-    (debug "START: starting *runner-thread*~%")
-    (setf *runner-thread* (ccl:run-program "/bin/bash" nil
-                                     :wait nil
-                                     :input :stream
-                                     :output :stream
-                                     :error :stream))
-    (debug "START: starting *killer-thread*~%")
-    (setf *killer-thread* (ccl:run-program "/bin/bash" nil
-                                            :wait nil
-                                            :input :stream
-                                            :output :stream
-                                            :error :stream))
-    (debug "START: starting *background-thread*~%")
-    (setf *background-thread* (ccl:run-program "/bin/bash" nil
-                                        :wait nil
-                                        :input :stream
-                                        :output nil
-                                        :error nil)))
-  nil)
+;; (defun maybe-start ()
+;;   ;; Stops any tshell processes and starts new ones.
+;;   (unless (check-threads-alive)
+;;     (debug "START: starting *runner-shell*~%")
+;;     (setf *runner-shell* (ccl:run-program "/bin/bash" nil
+;;                                      :wait nil
+;;                                      :input :stream
+;;                                      :output :stream
+;;                                      :error :stream))
+;;     (debug "START: starting *killer-shell*~%")
+;;     (setf *killer-shell* (ccl:run-program "/bin/bash" nil
+;;                                             :wait nil
+;;                                             :input :stream
+;;                                             :output :stream
+;;                                             :error :stream))
+;;     (debug "START: starting *background-shell*~%")
+;;     (setf *background-shell* (ccl:run-program "/bin/bash" nil
+;;                                         :wait nil
+;;                                         :input :stream
+;;                                         :output nil
+;;                                         :error nil)))
+;;   nil)
 
-(defun parse-status-line (line)
-  ;; Returns (PREFIX STATUS)
-  ;; If it's an exit line, PREFIX is anything that was printed before the
-  ;; exit message stuff (which can happen when the command doesn't print a
-  ;; newline at the end of its output), and STATUS is an integer that gives
-  ;; the exit status code.
-  ;; If it's not an exit line, PREFIX and STATUS are both NIL.
-  (let ((pos (strpos +status-line+ line)))
-    (if (not pos)
-        (values nil nil)
-      (progn
-        (debug "Found status line: ~a~%" line)
-        (let ((prefix (subseq line 0 pos))
-              (suffix (subseq line (+ 1 (length +status-line+) pos))))
-          (multiple-value-bind (val next-pos)
-              (parse-integer suffix)
-            (declare (ignore next-pos))
-            (values prefix val)))))))
+(defconstant +exit-line+   "SHELLPOOL_EXIT")
+(defconstant +status-line+ "SHELLPOOL_STATUS")
+(defconstant +pid-line+    "SHELLPOOL_PID")
 
 (defun parse-pid-line (line)
   ;; Given a line like TSHELL_PID 1234, we return 1234.
@@ -230,20 +305,24 @@
 (defun kill (pid)
   ;; Use the killer thread to try to kill process PID.
   (debug "KILL: killing ~a.~%" pid)
-  (let* ((killer-in (ccl:external-process-input-stream *killer-thread*)))
+  (bt:with-lock-held
+   ((state-lock *state*))
+   (let ((killer    (state-killer *state*))
+         (killer-in (ccl:external-process-input-stream killer)))
 
 ; Wow, this is tricky.  Want to kill not only the process, but all processes
 ; that it spawns.  To do this:
 ;   1. First look up the process's parent, i.e., the bash that is running
-;      inside of *runner-thread*.
-;   2. Find all processes with *runner-thread* as their parent, removing *runner-thread*
-;      itself.
+;      inside of the runner
+;   2. Find all processes with runner as their parent, removing runner itself
 ;   3. Kill everything found in 2.
+
+; BOZO this may all be different now that we have a subshell running our stuff.
 
     (format killer-in "PARENT=`ps -o pgrp ~a | tail -1`~%" pid)
     (format killer-in "NOT_PARENT=`pgrep -g $PARENT | grep -v $PARENT`~%")
     (format killer-in "kill -9 $NOT_PARENT~%")
-    (force-output killer-in)))
+    (force-output killer-in))))
 
 (defun default-each-line (line type)
   (declare (type string line))
@@ -258,23 +337,28 @@
     (otherwise
      (error "Unexpected line type ~s" type))))
 
-(defun run (cmd &key (each-line 'default-each-line))
+
+(defun run (cmd &key (each-line #'default-each-line))
+  (check-type cmd string)
+  (check-type each-line function)
 
   (unless (check-threads-alive)
-    (error "Invalid *runner-thread*, *killer-thread*, or *background-thread* -- did you call (start)?"))
+    (error "Invalid *runner-shell*, killer shell, or background shell -- did you call (start)?"))
 
-  (let* ((tshell-in     (ccl:external-process-input-stream *runner-thread*))
-         (tshell-out    (ccl:external-process-output-stream *runner-thread*))
-         (tshell-err    (ccl:external-process-error-stream *runner-thread*))
-         (pid           0)
-         (exit-status   1)
-         (line          nil)
-         (stdout-exit   nil)
-         (stderr-exit   nil)
-         (temp1
-          (cl-fad:with-output-to-temporary-file (stream :template "shellpool-%.tmp")
-                                                (write-line "#!/bin/sh" stream)
-                                                (write-line cmd stream)))
+  (with-runner runner
+
+    (let* ((bash-in     (ccl:external-process-input-stream runner))
+           (bash-out    (ccl:external-process-output-stream runner))
+           (bash-err    (ccl:external-process-error-stream runner))
+           (pid           nil)
+           (exit-status   nil)
+           (line          nil)
+           (stdout-exit   nil)
+           (stderr-exit   nil)
+           (tempfile      (cl-fad:with-output-to-temporary-file
+                           (stream :template "shellpool-%.tmp")
+                           (write-line "#!/bin/sh" stream)
+                           (write-line cmd stream)))
 
 ; Extremely tricky and carefully crafted bash code follows.
 ;
@@ -333,119 +417,116 @@
 ; The end strings are needed to determine when we've reached the end of the
 ; output associated with this command.
 
-         (cmd (concatenate 'string
-              "set -o pipefail" nl
-              "(((bash " (namestring temp1)
-                  " < /dev/null | sed -u 's/^/+/') 3>&1 1>&2 2>&3 | sed -u 's/^/-/') 2>&1"
-                  " ; printf \"\\n" +status-line+ " $?\\\n\" ) &" nl
-               "echo " +pid-line+ " $! 1>&2" nl
-               "wait" nl
-               "echo " +exit-line+ nl
-               "echo " +exit-line+ " 1>&2" nl)))
+           (cmd (concatenate 'string
+                             "set -o pipefail" nl
+                             "(((bash " (namestring tempfile)
+                             " < /dev/null | sed -u 's/^/+/') 3>&1 1>&2 2>&3 | sed -u 's/^/-/') 2>&1"
+                             " ; printf \"\\n" +status-line+ " $?\\\n\" ) &" nl
+                             "echo " +pid-line+ " $! 1>&2" nl
+                             "wait" nl
+                             "echo " +exit-line+ nl
+                             "echo " +exit-line+ " 1>&2" nl)))
 
-    (debug "Temp path is ~s~%" (namestring temp1))
+      (debug "Temp path is ~s~%" (namestring tempfile))
 
-    (debug "<Bash Commands>~%~a~%</Bash Commands>~%" cmd)
+      (debug "<Bash Commands>~%~a~%</Bash Commands>~%" cmd)
 
-    (write-line cmd tshell-in)
-    (finish-output tshell-in)
+      (write-line cmd bash-in)
+      (finish-output bash-in)
 
-    (setq pid (parse-pid-line (read-line tshell-err)))
+      (setq pid (parse-pid-line (read-line bash-err)))
 
-    (debug "PID is ~a.~%" pid)
+      (debug "PID is ~a.~%" pid)
 
-    (unwind-protect
+      (unwind-protect
+
+          (progn
+            ;; Read command output until we find the exit line.
+            (loop do
+                  (setq line (read-line bash-out))
+                  (debug "** Output line: ~s~%" line)
+                  (cond ((equal line "")
+                         (debug "Ignoring blank line.~%"))
+                        ((equal line +exit-line+)
+                         (debug "Exit line, done reading STDOUT.~%")
+                         (setq stdout-exit t)
+                         (loop-finish))
+                        ((eql (char line 0) #\+)
+                         (debug "Stdout line, invoking callback.~%")
+                         (funcall each-line (subseq line 1 nil) :stdout))
+                        ((eql (char line 0) #\-)
+                         (debug "Stderr line, invoking callback.~%")
+                         (funcall each-line (subseq line 1 nil) :stderr))
+                        ((strprefixp +status-line+ line)
+                         (debug "Exit status line: ~s~%" line)
+                         (setq exit-status
+                               (parse-integer line :start (+ 1 (length +status-line+)))))
+                        (t
+                         (error "Unexpected line ~s~%" line))))
+
+            ;; Read stderr until we find the exit line.
+            (loop do
+                  (setq line (read-line bash-err))
+                  (debug "** Stderr line: ~s~%" line)
+                  (cond ((equal line "")
+                         (debug "Ignoring blank line.~%"))
+                        ((equal line +exit-line+)
+                         (debug "Exit line, done reading STDERR.~%")
+                         (setq stderr-exit t)
+                         (loop-finish))
+                        (t
+                         (error "Unexpected line ~s~%" line)))))
 
         (progn
-          ;; Read command output until we find the exit line.
-          (loop do
-                (debug "Reading output line~%")
-                (setq line (read-line tshell-out))
-                (debug "** Output line: ~s~%" line)
+          ;; Cleanup in case of interrupts.
+          (when (not stdout-exit)
+            (format t "~%; Note: tshell shutting down process ~a.~%" pid)
+            (kill pid)
+            (loop do
+                  (setq line (read-line bash-out))
+                  (when (strsuffixp +exit-line+ line)
+                    ;; We used to try to match +exit-line+ exactly, but
+                    ;; then we found that if we interrupt while the program has
+                    ;; printed partial output, we can end up with a situation
+                    ;; like:
+                    ;;     <partial output>HORRIBLE_STRING_TO_DETECT_WHATEVER
+                    ;; So now we are more permissive.  We don't try to capture
+                    ;; the <partial output> because we're just skipping these
+                    ;; lines anyway.
+                    (debug "TSHELL_RECOVER: TSHELL_EXIT on STDOUT.~%")
+                    (debug "stdout line: ~s, suffixp: ~a~%"
+                           line (strsuffixp +exit-line+ line))
+                    (loop-finish))
+                  (debug "TSHELL_RECOVER stdout: Skip ~a.~%" line)))
 
-                (cond ((equal line "")
-                       (debug "Ignoring blank line.~%"))
+          (when (not stderr-exit)
+            (loop do
+                  (setq line (read-line bash-err))
+                  (when (strsuffixp +exit-line+ line)
+                    (debug "TSHELL_RECOVER: TSHELL_EXIT on STDERR.~%")
+                    (debug "stderr line: ~s, suffixp: ~a~%"
+                           line (strsuffixp +exit-line+ line))
+                    (loop-finish))
+                  (debug "TSHELL_RECOVER stderr: Skip ~a on stderr.~%" line)))))
 
-                      ((equal line +exit-line+)
-                       (debug "Exit line, done reading STDOUT.~%")
-                       (setq stdout-exit t)
-                       (loop-finish))
+      (delete-file tempfile)
 
-                      ((eql (char line 0) #\+)
-                       (debug "Stdout line, invoking callback.~%")
-                       (funcall each-line (subseq line 1 nil) :stdout))
+      (debug "TSHELL_RUN done.~%")
 
-                      ((eql (char line 0) #\-)
-                       (debug "Stderr line, invoking callback.~%")
-                       (funcall each-line (subseq line 1 nil) :stderr))
+      (unless (integerp exit-status)
+        (error "Somehow didn't get the exit status?"))
 
-                      (t
-                       (multiple-value-bind
-                        (prefix code)
-                        (parse-status-line line)
-                        (when code
-                          (debug "Exit code line, prefix=~s, code=~s~%" prefix code)
-                          (setq exit-status code)
-                          (unless (equal prefix "")
-                            (error "Unexpected prefix ~a~%" prefix)))))))
+      (unless (and stdout-exit stderr-exit)
+        (error "Somehow didn't exit?"))
 
-          ;; Read stderr until we find the exit line.
-          (loop do
-                (setq line (read-line tshell-err))
-                (debug "** Stderr line: ~s~%" line)
-                (when (equal line +exit-line+)
-                  (debug "TSHELL_EXIT on STDERR: ~a~%" line)
-                  (setq stderr-exit t)
-                  (loop-finish))
-                (debug "TSHELL_ERR: ~a.~%" line)))
-
-      (progn
-        ;; Cleanup in case of interrupts.
-        (when (not stdout-exit)
-          (format t "~%; Note: tshell shutting down process ~a.~%" pid)
-          (kill pid)
-          (loop do
-                (setq line (read-line tshell-out))
-                (when (strsuffixp +exit-line+ line)
-                  ;; We used to try to match +exit-line+ exactly, but
-                  ;; then we found that if we interrupt while the program has
-                  ;; printed partial output, we can end up with a situation
-                  ;; like:
-                  ;;     <partial output>HORRIBLE_STRING_TO_DETECT_WHATEVER
-                  ;; So now we are more permissive.  We don't try to capture
-                  ;; the <partial output> because we're just skipping these
-                  ;; lines anyway.
-                  (debug "TSHELL_RECOVER: TSHELL_EXIT on STDOUT.~%")
-                  (debug "stdout line: ~s, suffixp: ~a~%"
-                                line (strsuffixp +exit-line+ line))
-                  (loop-finish))
-                (debug "TSHELL_RECOVER stdout: Skip ~a.~%" line)))
-
-        (when (not stderr-exit)
-          (loop do
-                (setq line (read-line tshell-err))
-                (when (strsuffixp +exit-line+ line)
-                  (debug "TSHELL_RECOVER: TSHELL_EXIT on STDERR.~%")
-                  (debug "stderr line: ~s, suffixp: ~a~%"
-                                line (strsuffixp +exit-line+ line))
-                  (loop-finish))
-                (debug "TSHELL_RECOVER stderr: Skip ~a on stderr.~%" line)))))
-
-    (delete-file temp1)
-
-    (debug "TSHELL_RUN done.~%")
-
-    (unless (and stdout-exit stderr-exit)
-      (error "Somehow didn't exit?"))
-
-    exit-status))
+      exit-status)))
 
 
 (defun run-background (cmd)
   (unless (check-threads-alive)
-    (error "Invalid *runner-thread*, *killer-thread*, or *background-thread* -- did you call (start)?"))
+    (error "Invalid *runner-shell*, killer shell, or background shell -- did you call (start)?"))
 
-  (let* ((tshell-bg-in (ccl:external-process-input-stream *runner-thread*))
+  (let* ((tshell-bg-in (ccl:external-process-input-stream *runner-shell*))
          (cmd (concatenate 'string "(" cmd ") &" nl)))
     (debug "TSHELL_BG~%~a~%" cmd)
     (write-line cmd tshell-bg-in)

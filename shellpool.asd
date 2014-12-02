@@ -45,6 +45,7 @@
   :license "MIT"
   :depends-on (:cl-fad
                :bordeaux-threads
+               :bt-semaphore
                )
   :components ((:file "src/packages")
                (:file "src/main")))
