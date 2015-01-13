@@ -4,7 +4,7 @@ Shellpool Documentation
 See also the [Installation](INSTALL.md) instructions.
 
 
-# Minimal Example
+## Minimal Example
 
 ```
 $ ccl                                ;; start lisp
@@ -31,19 +31,33 @@ helper threads or allocating lots of memory.  From then on, these shells allow
 you to freely `run` external programs without having to fork.
 
 
-# Starting Shells
+## Starting Shells
 
 ### `(start [n]) --> nil`
 
-The `start` command launches a `bash` shell (or, optionally, `n` bash shells)
-for running commands.  At least one shell must be launched before you can
-invoke commands with `run`.
+Examples:
+```
+(shellpool:start)    ;; start a single bash shell
+(shellpool:start 3)  ;; start 3 more bash shells
+```
 
-Typically `start` is only called once at the start of your program, but you can
-also call it, subsequently, to start up additional threads.
+The `start` command launches bash shells that can be used for running
+sub-commands.  Typically `start` is only called once at the start of your
+program, but you can also call it subsequently to start up additional shells,
+as shown above.
+
+How many shells should you create?  The number of shells you create will govern
+how many simultaneous external programs you can `run` at a time.
+
+ - If your Lisp program is single-threaded, a single shell will be fine.
+
+ - If your Lisp program is multi-threaded (e.g., a web server or similar), and
+   each thread needs to be able to invoke external programs, then you may want
+   several shells.  (The `run` command will wait until a shell becomes
+   available, so running out of shells might throttle your program.)
 
 
-# Running Commands
+## Running Commands
 
 ### `(run cmd [options]) --> exit-status`
 
@@ -134,11 +148,12 @@ example where we collect the stdout and stderr lines separately:
 ```
 
 
-# Background Commands
+## Background Commands
+
+BOZO document me
 
 
-
-# Stopping
+## Stopping
 
 Shellpool does not provide a way to stop the shells after they have been
 created.  It is vaguely possible that a shutdown mechanism could be added in
