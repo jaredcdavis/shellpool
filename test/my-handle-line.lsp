@@ -30,23 +30,39 @@
 ;
 ; Original author: Jared Davis <jared@kookamara.com>
 
-(in-package :asdf-user)
+; my-handle-line.lsp -- Code that is used in the documentation examples
 
-#-ccl
-(error "Shellpool has not yet been ported to this Lisp; patches welcome.")
+(ql:quickload "shellpool")
+(shellpool:start)
 
-#+mswindows
-(error "Shellpool has not yet been ported to Windows; patches welcome.")
+(defun my-handle-line (line type)
+  ;; LINE is a string -- a single line of output
+  ;; TYPE is either :STDOUT or :STDERR
+  (format t "On ~s, got ~s~%" type line))
 
-(defsystem "shellpool"
-  :description "Interface from Common Lisp to External Programs"
-  :version "0.0.1"
-  :author "Kookamara LLC"
-  :license "MIT"
-  :depends-on (:cl-fad
-               :bordeaux-threads
-               :bt-semaphore
-               )
-  :components ((:file "src/packages")
-               (:file "src/main")))
+(shellpool:run "echo hello
+                echo world 1>&2
+                echo foo
+                echo bar 1>&2"
+               :each-line #'my-handle-line)
 
+(defun fancy-runner (cmd)
+  (let ((out-lines nil)
+        (err-lines nil)
+        (return-code nil))
+    (setq return-code
+          (shellpool:run cmd
+                         :each-line
+                         (lambda (line type)
+                           (case type
+                             (:STDOUT (push line out-lines))
+                             (:STDERR (push line err-lines))
+                             (otherwise (error "unexpected line type from shellpool: ~s" type))))))
+    (list :return-code return-code
+          :out-lines (nreverse out-lines)
+          :err-lines (nreverse err-lines))))
+
+(fancy-runner "echo hello
+               echo world 1>&2
+               echo foo
+               echo bar 1>&2")

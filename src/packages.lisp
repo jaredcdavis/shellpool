@@ -1,5 +1,5 @@
 ; Shellpool - Interface from Common Lisp to External Programs
-; Copyright (C) 2014 Kookamara LLC
+; Copyright (C) 2014-2015 Kookamara LLC
 ;
 ; Contact:
 ;

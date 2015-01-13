@@ -1,5 +1,5 @@
 ; Shellpool - Interface from Common Lisp to External Programs
-; Copyright (C) 2014 Kookamara LLC
+; Copyright (C) 2014-2015 Kookamara LLC
 ;
 ; Contact:
 ;
@@ -103,33 +103,30 @@
 ; ----------------------------------------------------------------------------
 ; Shells
 
-; BOZO we probably don't really need separate KILLER and BACKGROUND shells.  We
-; could probably fuse them together into a dedicated AUX shell pretty easily.
-
 (defstruct state
 
-  ;; LOCK is a lock that protects access to the KILLER and BACKGROUND shells.
-  ;; It must also be acquired whenever modifying RUNNERS.
+  ;; LOCK is a lock that protects access to the state itself.  See the fields
+  ;; below for when the lock must be acquired.
   (lock)
 
-  ;; KILLER is a dedicated bash process that is used to send kill signals to
-  ;; subsidiary processes to support interrupts.  Note that we only need a
-  ;; single KILLER shell to be able to kill any number of running processes.
-  ;; Locking convention: the LOCK must be held while using the KILLER thread.
-  ;; We expect uses of KILLER to take very little time (it just sends a "kill"
-  ;; signal to some other process), so a single process should suffice.
-  (killer)
-
-  ;; BACKGROUND is a dedicated bash process that is used to launch programs in
-  ;; the background when RUN-BACKGROUND is called.  Since background processes
-  ;; are of a "fire and forget" nature, i.e., we invoke commands like "firefox
-  ;; &", we think a single background shell should suffice.  Locking
-  ;; convention: the LOCK must be held while using the BACKGROUND thread.
-  (background)
+  ;; AUX is a dedicated bash process that is used to:
+  ;;   - send kill signals to subsidiary processes to support interrupts,
+  ;;   - launch background commands using run-background
+  ;;
+  ;; Note that we only need a single AUX shell to be able to kill any number
+  ;; of running processes.  Similarly, since background processes are of a
+  ;; "fire and forget" nature, i.e., we invoke commands like "firefox &", we
+  ;; think a single background shell should suffice.
+  ;;
+  ;; Locking convention: the LOCK must be held while using the AUX shell.  We
+  ;; expect uses of AUX to take very little time (it just sends a "kill" signal
+  ;; to some other process or launches background programs), so we think a
+  ;; single process should suffice.
+  (aux)
 
   ;; SEM is a semaphore that governs access to the RUNNERS.  Invariant: the
   ;; count of the semaphore should always agree exactly with (LENGTH RUNNERS).
-  ;; See GET-RUNNER, which properly waits for the next free runner.
+  ;; See WITH-RUNNER, which properly waits for the next free runner.
   (sem)
 
   ;; RUNNERS are an ordinary list of bash processes that are available for
@@ -138,10 +135,13 @@
 
 (defparameter *state*
   (make-state :lock       (bt:make-lock)
-              :killer     nil
-              :background nil
+              :aux        nil
               :sem        (bt-sem:make-semaphore)
               :runners    nil))
+
+(defmacro with-state-lock (&rest forms)
+  `(bt:with-lock-held ((state-lock *state*))
+                      . ,forms))
 
 (defmacro with-runner (name &rest forms)
   `(let ((,name nil))
@@ -149,19 +149,19 @@
          (progn
            (unless (bt-sem:wait-on-semaphore (state-sem *state*))
              (error "Failed to acquire runner"))
-           (bt:with-lock-held ((state-lock *state*))
-                              (unless (consp (state-runners *state*))
-                                ;; Should never happen.  The number of free runners
-                                ;; should always agree with the value of the
-                                ;; semaphore.
-                                (error "Our turn to go, but no runners are available?"))
-                              (setq ,name (pop (state-runners *state*))))
+           (with-state-lock
+             (unless (consp (state-runners *state*))
+               ;; Should never happen.  The number of free runners
+               ;; should always agree with the value of the
+               ;; semaphore.
+               (error "Our turn to go, but no runners are available?"))
+             (setq ,name (pop (state-runners *state*))))
            ;; Got the runner, so use it to run stuff.
            ,@forms)
        ;; Clean up by putting the runner back.
-       (bt:with-lock-held ((state-lock *state*))
-                          (push ,name (state-runners *state*))
-                          (bt-sem:signal-semaphore (state-sem *state*))))))
+       (with-state-lock
+         (push ,name (state-runners *state*))
+         (bt-sem:signal-semaphore (state-sem *state*))))))
 
 (defun make-new-runner ()
   (ccl:run-program "/bin/bash" nil
@@ -171,122 +171,29 @@
                    :error  :stream))
 
 (defun add-runners (n)
-  (bt:with-lock-held ((state-lock *state*))
-                     (loop for i from 1 to n do
-                           (push (make-new-runner) (state-runners *state*)))
-                     (bt-sem:signal-semaphore (state-sem *state*) n)))
-
+  (with-state-lock
+    (let ((state *state*))
+      (loop for i from 1 to n do
+            (push (make-new-runner) (state-runners state)))
+      (bt-sem:signal-semaphore (state-sem state) n))))
 
 (defun shell-alive-p (x)
   (and (ccl::external-process-p x)
        (eq (ccl:external-process-status x) :running)))
 
+(defun start (&optional (n '1))
+  (with-state-lock
+    (unless (state-aux *state*)
+      (debug "START: starting aux shell~%")
+      (setf (state-aux *state*)
+            (ccl:run-program "/bin/bash" nil
+                             :wait nil
+                             :input  :stream
+                             :output :stream
+                             :error  :stream)))
+    (add-runners n)
+    nil))
 
-;; (defun start (&key (runners '1))
-;;   (let ((state *state*))
-;;     (when (state-lock state)
-;;       (
-      
-      
-;;       (add-runners runners)
-;;     (setq *state*
-;;           (start-
-  
-  
-
-
-
-; Threads:
-;
-;  - runner-thread runs ordinary (foreground) programs
-;  - background-thread runs programs in the background (doesn't wait)
-;  - killer-thread is used to kill programs
-
-(defvar *runner-shell* nil)
-;(defvar *killer-shell* nil)
-;(defvar *background-shell* nil)
-
-
-(defun stop ()
-  ;; Stops any Shellpool threads that are running.
-
-  (progn (ignore-errors
-           (when *runner-shell*
-             (debug "STOP: stopping *runner-shell*~%")
-             (ccl:signal-external-process *runner-shell* 9)
-             (setq *runner-shell* nil)))
-         ;; BOZO need lock
-         (ignore-errors
-           (when (state-killer *state*)
-             (debug "STOP: stopping killer shell~%")
-             (ccl:signal-external-process (state-killer *state*) 9)
-             (setq (state-killer *state*) nil)))
-         ;; BOZO need lock
-         (ignore-errors
-           (when (state-background *state*)
-             (debug "STOP: stopping background shell~%")
-             (ccl:signal-external-process background-shell 9)
-             (setq background-shell nil)))
-         nil))
-
-(defun start ()
-  ;; Stops any Shellpool threads and starts new ones.
-
-  (progn (debug "START: killing old processes~%")
-         (stop)
-         (debug "START: starting *runner-shell*~%")
-         (setf *runner-shell* (ccl:run-program "/bin/bash" nil
-                                          :wait nil
-                                          :input :stream
-                                          :output :stream
-                                          :error :stream))
-         (debug "START: starting killer shell~%")
-         ;; bozo need lock
-         (setf (state-killer *state*)
-               (ccl:run-program "/bin/bash" nil
-                                :wait nil
-                                :input  :stream
-                                :output :stream
-                                :error  :stream))
-         (debug "START: starting *background-shell*~%")
-         ;; bozo need lock
-         (setf (state-background state)
-               (ccl:run-program "/bin/bash" nil
-                                :wait nil
-                                :input :stream
-                                :output nil
-                                :error nil))
-         (add-runners 1)
-         nil))
-
-(defun check-threads-alive ()
-  (and (shell-alive-p *runner-shell*)
-       ;; BOZO need lock
-       (shell-alive-p (state-background *state*))
-       (shell-alive-p (state-killer *state*))))
-
-;; (defun maybe-start ()
-;;   ;; Stops any tshell processes and starts new ones.
-;;   (unless (check-threads-alive)
-;;     (debug "START: starting *runner-shell*~%")
-;;     (setf *runner-shell* (ccl:run-program "/bin/bash" nil
-;;                                      :wait nil
-;;                                      :input :stream
-;;                                      :output :stream
-;;                                      :error :stream))
-;;     (debug "START: starting *killer-shell*~%")
-;;     (setf *killer-shell* (ccl:run-program "/bin/bash" nil
-;;                                             :wait nil
-;;                                             :input :stream
-;;                                             :output :stream
-;;                                             :error :stream))
-;;     (debug "START: starting *background-shell*~%")
-;;     (setf *background-shell* (ccl:run-program "/bin/bash" nil
-;;                                         :wait nil
-;;                                         :input :stream
-;;                                         :output nil
-;;                                         :error nil)))
-;;   nil)
 
 (defconstant +exit-line+   "SHELLPOOL_EXIT")
 (defconstant +status-line+ "SHELLPOOL_STATUS")
@@ -303,12 +210,11 @@
     val))
 
 (defun kill (pid)
-  ;; Use the killer thread to try to kill process PID.
+  ;; Use the aux shell to try to kill process PID.
   (debug "KILL: killing ~a.~%" pid)
-  (bt:with-lock-held
-   ((state-lock *state*))
-   (let ((killer    (state-killer *state*))
-         (killer-in (ccl:external-process-input-stream killer)))
+  (with-state-lock
+    (let ((aux    (state-aux *state*))
+          (aux-in (ccl:external-process-input-stream aux)))
 
 ; Wow, this is tricky.  Want to kill not only the process, but all processes
 ; that it spawns.  To do this:
@@ -319,10 +225,10 @@
 
 ; BOZO this may all be different now that we have a subshell running our stuff.
 
-    (format killer-in "PARENT=`ps -o pgrp ~a | tail -1`~%" pid)
-    (format killer-in "NOT_PARENT=`pgrep -g $PARENT | grep -v $PARENT`~%")
-    (format killer-in "kill -9 $NOT_PARENT~%")
-    (force-output killer-in))))
+      (format aux-in "PARENT=`ps -o pgrp ~a | tail -1`~%" pid)
+      (format aux-in "NOT_PARENT=`pgrep -g $PARENT | grep -v $PARENT`~%")
+      (format aux-in "kill -9 $NOT_PARENT~%")
+      (force-output aux-in))))
 
 (defun default-each-line (line type)
   (declare (type string line))
@@ -341,9 +247,6 @@
 (defun run (cmd &key (each-line #'default-each-line))
   (check-type cmd string)
   (check-type each-line function)
-
-  (unless (check-threads-alive)
-    (error "Invalid *runner-shell*, killer shell, or background shell -- did you call (start)?"))
 
   (with-runner runner
 
@@ -371,8 +274,8 @@
 ;
 ;   - The SED commands and output redirection are grabbing the output from cmd.sh
 ;     and modifying it so that:
-;          every stdout line prefixed by +
-;          every stderr line prefixed by -
+;          every stdout line gets prefixed by +
+;          every stderr line gets prefixed by -
 ;          the resulting lines are merged together and printed to stdout
 ;          the use of "-u" prevents sed from adding extra buffering
 ;
@@ -523,15 +426,13 @@
 
 
 (defun run-background (cmd)
-  (unless (check-threads-alive)
-    (error "Invalid *runner-shell*, killer shell, or background shell -- did you call (start)?"))
-
-  (let* ((tshell-bg-in (ccl:external-process-input-stream *runner-shell*))
-         (cmd (concatenate 'string "(" cmd ") &" nl)))
-    (debug "TSHELL_BG~%~a~%" cmd)
-    (write-line cmd tshell-bg-in)
-    (finish-output tshell-bg-in))
-
+  (with-state-lock
+    (let* ((aux    (state-aux *state*))
+           (aux-in (ccl:external-process-input-stream *aux-shell*))
+           (cmd    (concatenate 'string "(" cmd ") &" nl)))
+      (debug "BG: ~s~%" cmd)
+      (write-line cmd aux-in)
+      (finish-output aux-in)))
   nil)
 
 

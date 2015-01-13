@@ -6,11 +6,10 @@ Shellpool
 Shellpool is a way to run external programs from within a Common Lisp
 program.  It features:
 
- - **Output streaming and capture**.  You can (optionally) have the program's
-   output printed at runtime, but still (optionally) capture its output as a
-   string list.  This makes it easy to not only (1) show a user a long-running
-   sub-program's output as it's being created, but also (2) parse and analyze
-   the program's output from your Lisp program.
+ - **Output handling**.  You can provide a callback function that handles each
+   line of output.  This makes it easy to stream, filter, or collect output as
+   you like.  Your callback is invoked for both standard error and output
+   lines, and can tell the difference.
 
  - **Exit code**.  Yep, you get it.
 
@@ -24,11 +23,11 @@ program.  It features:
    of memory allocated or involve multiple threads.
 
  - **Background jobs**.  You can (optionally) launch external programs in the
-   background.  (You don't get the exit codes and streaming features in this
-   case.)
+   background.  (However, you don't get the exit codes and streaming features
+   in this case.)
 
- - **Multithreading**.  Shellpool is safe for launching multiple programs from
-   multiple threads.  Its multithreading support is based on the
+ - **Multithreading**.  You can safely launch multiple programs from multiple
+   threads.  Threading support is based on the
    [bordeaux-threads](http://common-lisp.net/project/bordeaux-threads/)
    library.
 
@@ -39,14 +38,41 @@ program.  It features:
 
  - [API Documentation](DOC.md)
 
+ - Please use the [Github issue
+   tracker](https://github.com/jaredcdavis/shellpool/issues) for any bugs or
+   enhancement requests.
+
 
 ## Portability
 
+Lisps:
+
  - CCL (to start with)
- - other lisps in the future
+ - SBCL (not yet, but will be done for 0.1)
+
+Operating Systems:
+
+ - Linux, BSD, etc. (to start with)
+
+I would welcome any patches that provide support for other Lisps or for Windows
+environments.
 
 
-## Comparison with related libraries
+### Dependencies
+
+Lisp Libraries:
+
+  - [cl-fad](http://weitz.de/cl-fad/) for handling temporary files
+  - [bordeaux-threads](http://common-lisp.net/project/bordeaux-threads/) for multithreading
+  - [bt-semaphore](https://github.com/rmoritz/bt-semaphore) for semaphores
+
+Utilities:
+
+  - [https://www.gnu.org/software/bash/](Bash)
+  - [https://www.gnu.org/software/sed/](Sed)
+
+
+## Related Lisp Libraries
 
  - [inferior-shell](http://common-lisp.net/projects/qitab/) is allegedly very
    complete and portable for synchronous shells.  It has fancy features like
@@ -66,8 +92,8 @@ program.  It features:
 
 ## License and History
 
-Shellpool is Copyright (C) 2014 [Kookamara LLC](http://www.kookamara.com/) and
-released under an [MIT style license](LICENSE).
+Shellpool is Copyright (C) 2014-2015 [Kookamara LLC](http://www.kookamara.com/)
+and released under an [MIT style license](LICENSE).
 
 Shellpool is a successor to "tshell", a mechanism for running external programs
 from [Clozure Common Lisp](http://ccl.clozure.com/).  Tshell was developed by
