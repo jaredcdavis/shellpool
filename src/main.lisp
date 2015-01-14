@@ -168,7 +168,8 @@
                    :wait   nil
                    :input  :stream
                    :output :stream
-                   :error  :stream))
+                   :error  :stream
+                   :sharing :external))
 
 (defun add-runners (n)
   (with-state-lock
@@ -190,7 +191,8 @@
                              :wait nil
                              :input  :stream
                              :output :stream
-                             :error  :stream)))
+                             :error  :stream
+                             :sharing :external)))
     (add-runners n)
     nil))
 
@@ -213,8 +215,8 @@
   ;; Use the aux shell to try to kill process PID.
   (debug "KILL: killing ~a.~%" pid)
   (with-state-lock
-    (let ((aux    (state-aux *state*))
-          (aux-in (ccl:external-process-input-stream aux)))
+    (let* ((aux    (state-aux *state*))
+           (aux-in (ccl:external-process-input-stream aux)))
 
 ; Wow, this is tricky.  Want to kill not only the process, but all processes
 ; that it spawns.  To do this:
@@ -244,15 +246,87 @@
      (error "Unexpected line type ~s" type))))
 
 
+(defmacro with-file-to-be-deleted (filename &rest forms)
+  `(unwind-protect
+       (progn . ,forms)
+     (delete-file ,filename)))
+
+(defun make-run-command-string (tempfile)
+  ;; Extremely tricky and carefully crafted bash code follows.
+  ;;
+  ;; The core of this is basically the following:
+  ;;
+  ;;  0.     set -o pipefail
+  ;;  1.     ((bash cmd.sh < /dev/null | sed -u 's/^/+/') 3>&1 1>&2 2>&3 | sed -u 's/^/-/') 2>&1
+  ;;
+  ;; What's going on here?
+  ;;
+  ;;   - The SED commands and output redirection are grabbing the output from
+  ;;     cmd.sh and modifying it so that:
+  ;;          every stdout line gets prefixed by +
+  ;;          every stderr line gets prefixed by -
+  ;;          the resulting lines are merged together and printed to stdout
+  ;;          the use of "-u" prevents sed from adding extra buffering
+  ;;
+  ;;     This is wonderful and allows us to
+  ;;       (1) distinguish the stderr/stdout lines from one another (obviously),
+  ;;       (2) distinguish the command output from other stuff (needed in a moment),
+  ;;       (3) get stdout/stderr together, interleaved, as they are produced.
+  ;;
+  ;;   - Normally this use of sed would ruin the exit code from cmd.sh.
+  ;;     However, the pipefail option corrects for this, and sets things up so
+  ;;     that if cmd.sh exits with a failure, we'll get this failure as the
+  ;;     exit status for the whole pipeline.
+  ;;
+  ;; We extend this core with some additional stuff for being able to extract
+  ;; the exit code and PID of the command.  Here is the real solution:
+  ;;
+  ;;  0.   set -o pipefail                        # As above, and doesn't bother anything below
+  ;;  1.   ( <core 1> ; printf "\nEXIT $?\n") &   # Run in background (so we can get PID), print exit status
+  ;;  2.   echo PID $! 1>&2                       # Print the PID to STDOUT.
+  ;;  3.   wait                                   # Wait for the command to finish
+  ;;  4.   echo ""                                # Make sure we get a newline at end of stdout
+  ;;  5.   echo "" 1>&2                           # Make sure we get a newline at end of stderr
+  ;;  6.   echo END                               # Print end-of-command to stdout
+  ;;  7.   echo END 1>&2                          # Print end-of-command to stderr
+  ;;
+  ;; The main trick here is to run the command in the background and then to
+  ;; wait for it.  We do this so that (line 2) we can print out the PID
+  ;; associated with the subshell we're launching.  Notice that something
+  ;; subtle helps to make this safe: all output from Line 1 goes to stdout, but
+  ;; we print the PID to stderr.  Accordingly, when reading output in Lisp, we
+  ;; can be sure that the first line of stderr is going to be the PID line,
+  ;; even if the command prints immediately to stderr.
+  ;;
+  ;; The printf command in line 1 deserves some attention.  Note that we add a
+  ;; newline before printing the exit message.  This is because the command
+  ;; could exit after printing some non newline-terminated text, e.g., suppose
+  ;; the user wants to run a command like "echo -n hello".  By printing the
+  ;; newline, we're sure that our EXIT message will occur on its own line.
+  ;; This makes it possible to reliably parse it without any restrictions on
+  ;; what core might print.
+  ;;
+  ;; The end strings are needed to determine when we've reached the end of the
+  ;; output associated with this command.
+  (concatenate 'string
+               "set -o pipefail" nl
+               "(((bash " (namestring tempfile)
+               " < /dev/null | sed -u 's/^/+/') 3>&1 1>&2 2>&3 | sed -u 's/^/-/') 2>&1"
+               " ; printf \"\\n" +status-line+ " $?\\\n\" ) &" nl
+               "echo " +pid-line+ " $! 1>&2" nl
+               "wait" nl
+               "echo " +exit-line+ nl
+               "echo " +exit-line+ " 1>&2" nl))
+
+
 (defun run (cmd &key (each-line #'default-each-line))
   (check-type cmd string)
   (check-type each-line function)
 
   (with-runner runner
-
-    (let* ((bash-in     (ccl:external-process-input-stream runner))
-           (bash-out    (ccl:external-process-output-stream runner))
-           (bash-err    (ccl:external-process-error-stream runner))
+    (let* ((bash-in       (ccl:external-process-input-stream runner))
+           (bash-out      (ccl:external-process-output-stream runner))
+           (bash-err      (ccl:external-process-error-stream runner))
            (pid           nil)
            (exit-status   nil)
            (line          nil)
@@ -261,169 +335,102 @@
            (tempfile      (cl-fad:with-output-to-temporary-file
                            (stream :template "shellpool-%.tmp")
                            (write-line "#!/bin/sh" stream)
-                           (write-line cmd stream)))
+                           (write-line "trap \"kill -- -$BASHPID\" SIGINT SIGTERM" stream)
+                           (write-line cmd stream))))
+      (with-file-to-be-deleted tempfile
 
-; Extremely tricky and carefully crafted bash code follows.
-;
-; The core of this is basically the following:
-;
-;  0.     set -o pipefail
-;  1.     ((bash cmd.sh < /dev/null | sed -u 's/^/+/') 3>&1 1>&2 2>&3 | sed -u 's/^/-/') 2>&1
-;
-; What's going on here?
-;
-;   - The SED commands and output redirection are grabbing the output from cmd.sh
-;     and modifying it so that:
-;          every stdout line gets prefixed by +
-;          every stderr line gets prefixed by -
-;          the resulting lines are merged together and printed to stdout
-;          the use of "-u" prevents sed from adding extra buffering
-;
-;     This is wonderful and allows us to
-;       (1) distinguish the stderr/stdout lines from one another (obviously),
-;       (2) distinguish the command output from other stuff (needed in a moment),
-;       (3) get stdout/stderr together, interleaved, as they are produced.
-;
-;   - Normally this use of sed would ruin the exit code from cmd.sh.  However,
-;     the pipefail option corrects for this, and sets things up so that if
-;     cmd.sh exits with a failure, we'll get this failure as the exit status
-;     for the whole pipeline.
-;
-; We extend this core with some additional stuff for being able to extract the
-; exit code and PID of the command.  Here is the real solution:
-;
-;  0.   set -o pipefail                        # As above, and doesn't bother anything below
-;  1.   ( <core 1> ; printf "\nEXIT $?\n") &   # Run in background (so we can get PID), print exit status
-;  2.   echo PID $! 1>&2                       # Print the PID to STDOUT.
-;  3.   wait                                   # Wait for the command to finish
-;  4.   echo ""                                # Make sure we get a newline at end of stdout
-;  5.   echo "" 1>&2                           # Make sure we get a newline at end of stderr
-;  6.   echo END                               # Print end-of-command to stdout
-;  7.   echo END 1>&2                          # Print end-of-command to stderr
-;
-; The main trick here is to run the command in the background and then to wait
-; for it.  We do this so that (line 2) we can print out the PID associated with
-; the subshell we're launching.  Notice that something subtle helps to make
-; this safe: all output from Line 1 goes to stdout, but we print the PID to
-; stderr.  Accordingly, when reading output in Lisp, we can be sure that the
-; first line of stderr is going to be the PID line, even if the command prints
-; immediately to stderr.
-;
-; The printf command in line 1 deserves some attention.  Note that we add a
-; newline before printing the exit message.  This is because the command could
-; exit after printing some non newline-terminated text, e.g., suppose the user
-; wants to run a command like "echo -n hello".  By printing the newline, we're
-; sure that our EXIT message will occur on its own line.  This makes it
-; possible to reliably parse it without any restrictions on what core might
-; print.
-;
-; The end strings are needed to determine when we've reached the end of the
-; output associated with this command.
+        (let ((cmd (make-run-command-string tempfile)))
 
-           (cmd (concatenate 'string
-                             "set -o pipefail" nl
-                             "(((bash " (namestring tempfile)
-                             " < /dev/null | sed -u 's/^/+/') 3>&1 1>&2 2>&3 | sed -u 's/^/-/') 2>&1"
-                             " ; printf \"\\n" +status-line+ " $?\\\n\" ) &" nl
-                             "echo " +pid-line+ " $! 1>&2" nl
-                             "wait" nl
-                             "echo " +exit-line+ nl
-                             "echo " +exit-line+ " 1>&2" nl)))
+          (debug "Temp path is ~s~%" (namestring tempfile))
+          (debug "<Bash Commands>~%~a~%</Bash Commands>~%" cmd)
 
-      (debug "Temp path is ~s~%" (namestring tempfile))
+          (write-line cmd bash-in)
+          (finish-output bash-in)
 
-      (debug "<Bash Commands>~%~a~%</Bash Commands>~%" cmd)
+          (setq pid (parse-pid-line (read-line bash-err)))
 
-      (write-line cmd bash-in)
-      (finish-output bash-in)
+          (debug "PID is ~a.~%" pid)
 
-      (setq pid (parse-pid-line (read-line bash-err)))
+          (unwind-protect
 
-      (debug "PID is ~a.~%" pid)
+              (progn
+                ;; Read command output until we find the exit line.
+                (loop do
+                      (setq line (read-line bash-out))
+                      (debug "** Output line: ~s~%" line)
+                      (cond ((equal line "")
+                             (debug "Ignoring blank line.~%"))
+                            ((equal line +exit-line+)
+                             (debug "Exit line, done reading STDOUT.~%")
+                             (setq stdout-exit t)
+                             (loop-finish))
+                            ((eql (char line 0) #\+)
+                             (debug "Stdout line, invoking callback.~%")
+                             (funcall each-line (subseq line 1 nil) :stdout))
+                            ((eql (char line 0) #\-)
+                             (debug "Stderr line, invoking callback.~%")
+                             (funcall each-line (subseq line 1 nil) :stderr))
+                            ((strprefixp +status-line+ line)
+                             (debug "Exit status line: ~s~%" line)
+                             (setq exit-status
+                                   (parse-integer line :start (+ 1 (length +status-line+)))))
+                            (t
+                             (error "Unexpected line ~s~%" line))))
 
-      (unwind-protect
+                ;; Read stderr until we find the exit line.
+                (loop do
+                      (setq line (read-line bash-err))
+                      (debug "** Stderr line: ~s~%" line)
+                      (cond ((equal line "")
+                             (debug "Ignoring blank line.~%"))
+                            ((equal line +exit-line+)
+                             (debug "Exit line, done reading STDERR.~%")
+                             (setq stderr-exit t)
+                             (loop-finish))
+                            (t
+                             (error "Unexpected line ~s~%" line)))))
 
-          (progn
-            ;; Read command output until we find the exit line.
-            (loop do
-                  (setq line (read-line bash-out))
-                  (debug "** Output line: ~s~%" line)
-                  (cond ((equal line "")
-                         (debug "Ignoring blank line.~%"))
-                        ((equal line +exit-line+)
-                         (debug "Exit line, done reading STDOUT.~%")
-                         (setq stdout-exit t)
-                         (loop-finish))
-                        ((eql (char line 0) #\+)
-                         (debug "Stdout line, invoking callback.~%")
-                         (funcall each-line (subseq line 1 nil) :stdout))
-                        ((eql (char line 0) #\-)
-                         (debug "Stderr line, invoking callback.~%")
-                         (funcall each-line (subseq line 1 nil) :stderr))
-                        ((strprefixp +status-line+ line)
-                         (debug "Exit status line: ~s~%" line)
-                         (setq exit-status
-                               (parse-integer line :start (+ 1 (length +status-line+)))))
-                        (t
-                         (error "Unexpected line ~s~%" line))))
+            (progn
+              ;; Cleanup in case of interrupts.
+              (when (not stdout-exit)
+                (format t "~%; Note: tshell shutting down process ~a.~%" pid)
+                (kill pid)
+                (loop do
+                      (setq line (read-line bash-out))
+                      (when (strsuffixp +exit-line+ line)
+                        ;; We used to try to match +exit-line+ exactly, but
+                        ;; then we found that if we interrupt while the program has
+                        ;; printed partial output, we can end up with a situation
+                        ;; like:
+                        ;;     <partial output>HORRIBLE_STRING_TO_DETECT_WHATEVER
+                        ;; So now we are more permissive.  We don't try to capture
+                        ;; the <partial output> because we're just skipping these
+                        ;; lines anyway.
+                        (debug "TSHELL_RECOVER: TSHELL_EXIT on STDOUT.~%")
+                        (debug "stdout line: ~s, suffixp: ~a~%"
+                               line (strsuffixp +exit-line+ line))
+                        (loop-finish))
+                      (debug "TSHELL_RECOVER stdout: Skip ~a.~%" line)))
 
-            ;; Read stderr until we find the exit line.
-            (loop do
-                  (setq line (read-line bash-err))
-                  (debug "** Stderr line: ~s~%" line)
-                  (cond ((equal line "")
-                         (debug "Ignoring blank line.~%"))
-                        ((equal line +exit-line+)
-                         (debug "Exit line, done reading STDERR.~%")
-                         (setq stderr-exit t)
-                         (loop-finish))
-                        (t
-                         (error "Unexpected line ~s~%" line)))))
+              (when (not stderr-exit)
+                (loop do
+                      (setq line (read-line bash-err))
+                      (when (strsuffixp +exit-line+ line)
+                        (debug "TSHELL_RECOVER: TSHELL_EXIT on STDERR.~%")
+                        (debug "stderr line: ~s, suffixp: ~a~%"
+                               line (strsuffixp +exit-line+ line))
+                        (loop-finish))
+                      (debug "TSHELL_RECOVER stderr: Skip ~a on stderr.~%" line))))))
 
-        (progn
-          ;; Cleanup in case of interrupts.
-          (when (not stdout-exit)
-            (format t "~%; Note: tshell shutting down process ~a.~%" pid)
-            (kill pid)
-            (loop do
-                  (setq line (read-line bash-out))
-                  (when (strsuffixp +exit-line+ line)
-                    ;; We used to try to match +exit-line+ exactly, but
-                    ;; then we found that if we interrupt while the program has
-                    ;; printed partial output, we can end up with a situation
-                    ;; like:
-                    ;;     <partial output>HORRIBLE_STRING_TO_DETECT_WHATEVER
-                    ;; So now we are more permissive.  We don't try to capture
-                    ;; the <partial output> because we're just skipping these
-                    ;; lines anyway.
-                    (debug "TSHELL_RECOVER: TSHELL_EXIT on STDOUT.~%")
-                    (debug "stdout line: ~s, suffixp: ~a~%"
-                           line (strsuffixp +exit-line+ line))
-                    (loop-finish))
-                  (debug "TSHELL_RECOVER stdout: Skip ~a.~%" line)))
+        (debug "TSHELL_RUN done.~%")
 
-          (when (not stderr-exit)
-            (loop do
-                  (setq line (read-line bash-err))
-                  (when (strsuffixp +exit-line+ line)
-                    (debug "TSHELL_RECOVER: TSHELL_EXIT on STDERR.~%")
-                    (debug "stderr line: ~s, suffixp: ~a~%"
-                           line (strsuffixp +exit-line+ line))
-                    (loop-finish))
-                  (debug "TSHELL_RECOVER stderr: Skip ~a on stderr.~%" line)))))
+        (unless (integerp exit-status)
+          (error "Somehow didn't get the exit status?"))
 
-      (delete-file tempfile)
+        (unless (and stdout-exit stderr-exit)
+          (error "Somehow didn't exit?"))
 
-      (debug "TSHELL_RUN done.~%")
-
-      (unless (integerp exit-status)
-        (error "Somehow didn't get the exit status?"))
-
-      (unless (and stdout-exit stderr-exit)
-        (error "Somehow didn't exit?"))
-
-      exit-status)))
-
+        exit-status))))
 
 (defun run-background (cmd)
   (with-state-lock

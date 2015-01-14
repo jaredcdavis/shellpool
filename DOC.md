@@ -6,6 +6,9 @@ See also the [Installation](INSTALL.md) instructions.
 
 ## Minimal Example
 
+The typical way to use Shellpool is to first `start` some bash processes, and
+then `run` external commands.
+
 ```
 $ ccl                                ;; start lisp
 ? (ql:quickload :shellpool)          ;; load shellpool (see installation instructions!)
@@ -15,20 +18,16 @@ hello                                ;; some output printed by the command
 0                                    ;; the resulting exit status
 ```
 
-The typical way to use Shellpool is to first `start` some bash processes, and
-then `run` external commands.
-
 Why are `start` and `run` separated?  Launching external programs involves
 [forking](http://en.wikipedia.org/wiki/Fork_%28operating_system%29) your Lisp
-image.  Forking is **not reliable** when your application has many GB of memory
-allocated or multiple threads are already running.  Here are
+image, which is **not reliable** when your application has many GB of memory
+allocated or multiple threads are already running.  (Here are
 [some](http://www.linuxprogrammingblog.com/threads-and-fork-think-twice-before-using-them)
-[articles](http://bryanmarty.com/2012/01/14/forking-jvm/) for background.
-
+[articles](http://bryanmarty.com/2012/01/14/forking-jvm/) for background.)
 Separating `start` from `run` largely solves these problems.  The idea is to
 `start` your shells early while your program is booting up, before creating any
-helper threads or allocating lots of memory.  From then on, these shells allow
-you to freely `run` external programs without having to fork.
+helper threads or allocating lots of memory.  From then on, you can freely
+`run` external programs by using these shells instead of having to fork.
 
 
 ## Starting Shells
@@ -61,23 +60,29 @@ how many simultaneous external programs you can `run` at a time.
 
 ### `(run cmd [options]) --> exit-status`
 
-The **cmd** must be a string and governs what to execute.  This command will be
-written into a temporary shell script that will be run with `bash`.  This has
-many consequences, for instance:
+Examples:
+```
+(shellpool:run "echo hello")
+(shellpool:run "convert-image photo.png" :each-line #'parse-convert-image)
+```
 
-  - You need to be careful about properly escaping things
-  - You can freely use output redirection
-  - You can actually give the whole guts of a bash shell script here
-
-The script will be run with `/dev/null` as its input.  This isn't suitable for
-running scripts that need to prompt the user for input.
-
-The `run` function waits for the script to finish so that it can give you the
-exit status.  For instance, you can expect:
+The `run` function runs a command and waits for it to finish (so it can give
+you the exit status).  For instance, you can expect:
 
   ```(time (shellpool:run "sleep 5"))```
 
-to report something like 5.001 seconds.
+to report something like 5.001 seconds and return 0.
+
+The command to execute must be a string.  This string will be written into a
+temporary script that will be run with `bash`.  This has many consequences, for
+instance:
+
+  - You need to be careful about properly escaping things.
+  - You can freely use output redirection.
+  - You can actually give the whole guts of a bash shell script here.
+
+The temporary script will be run with `/dev/null` as its input.  This isn't
+suitable for running scripts that need to prompt the user for input.
 
 
 ### Handling Output
@@ -95,7 +100,8 @@ command is to just `let`-binding these streams.  For instance, you could do:
     (get-output-stream-string stream))
 "Hello
 World
-"```
+"
+```
 
 In some cases you may want more flexibility.  In this case, you can supply your
 own line-handling function.  For instance:

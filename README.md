@@ -31,6 +31,9 @@ program.  It features:
    [bordeaux-threads](http://common-lisp.net/project/bordeaux-threads/)
    library.
 
+Note however that Shellpool is **not** suitable for running sub-commands that
+need access to a real tty terminal or even command-line input from the user.
+
 
 ## Documentation
 

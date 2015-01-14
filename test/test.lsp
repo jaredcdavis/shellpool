@@ -133,29 +133,21 @@
 
 (check-bad-input "echo \"oops, forgot ending quote")
 
+; Now try to make sure that didn't screw up the shell somehow.
 (basic-test "echo hello"
             :stdout '("hello"))
 
 (check-bad-input "echo 'oops, forgot ending single quote")
 
+; And try to make sure THAT didn't screw up the shell, either.
 (basic-test "echo hello"
             :stdout '("hello"))
 
 (check-bad-input "(echo \"Oops, no closing paren.\" ")
 
+; And again, try to make sure that didn't screw up the shell.
 (basic-test "echo hello"
             :stdout '("hello"))
-
-
-
-(setq shellpool:*debug* t)
-
-;;  - handling of backgrounded commands, etc.
-;;  - argument parsing stuff, execve style stuff
- 
-
-
-
 
 ;; (let* ((proc (ccl:run-program "./harness2.sh" nil
 ;;                               :wait nil
