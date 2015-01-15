@@ -58,7 +58,7 @@ Operating Systems:
  - Linux (to start with)
  - BSD (not tested yet)
 
-There is reasonably good [test suite](tests/) that can be used to help ensure
+There is reasonably good [test suite](test/) that can be used to help ensure
 compatibility with your system.
 
 I would welcome any patches that provide support for other Lisps or operating
