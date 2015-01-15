@@ -6,16 +6,15 @@ Shellpool
 Shellpool is a way to run external programs from within a Common Lisp
 program.  It features:
 
- - **Output handling**.  You can provide a callback function that handles each
-   line of output.  This makes it easy to stream, filter, or collect output as
-   you like.  Your callback is invoked for both standard error and output
-   lines, and can tell the difference.
+ - **Output handling**.  You can easily stream, filter, or collect output from
+   the command.  You can access both stdout and stderr lines as they are
+   produced, and can tell the difference between them.
 
  - **Exit code**.  Yep, you get it.
 
  - **Interruption**.  Interrupts are handled gracefully.  After you interrupt
    (e.g., Control C), you can `:continue` to keep running the program, or `:q`
-   to send the sub-program a KILL signal.
+   to terminate the program and return to Lisp as normal.
 
  - **Forking**.  Sub-programs are launched with a separate shell, so you can
    avoid [forking](http://en.wikipedia.org/wiki/Fork_%28operating_system%29)
@@ -31,8 +30,9 @@ program.  It features:
    [bordeaux-threads](http://common-lisp.net/project/bordeaux-threads/)
    library.
 
-Note however that Shellpool is **not** suitable for running sub-commands that
-need access to a real tty terminal or even command-line input from the user.
+Note: Shellpool is **not** suitable for running sub-commands that need access
+to command-line input from the user or for
+[TTY](https://en.wikipedia.org/wiki/Terminal_emulator)-based programs.
 
 
 ## Documentation
@@ -55,10 +55,14 @@ Lisps:
 
 Operating Systems:
 
- - Linux, BSD, etc. (to start with)
+ - Linux (to start with)
+ - BSD (not tested yet)
 
-I would welcome any patches that provide support for other Lisps or for Windows
-environments.
+There is reasonably good [test suite](tests/) that can be used to help ensure
+compatibility with your system.
+
+I would welcome any patches that provide support for other Lisps or operating
+systems.
 
 
 ### Dependencies
@@ -69,10 +73,10 @@ Lisp Libraries:
   - [bordeaux-threads](http://common-lisp.net/project/bordeaux-threads/) for multithreading
   - [bt-semaphore](https://github.com/rmoritz/bt-semaphore) for semaphores
 
-Utilities:
+Required Utilities:
 
-  - [https://www.gnu.org/software/bash/](Bash)
-  - [https://www.gnu.org/software/sed/](Sed)
+  - [Bash](https://www.gnu.org/software/bash/)
+  - [Sed](https://www.gnu.org/software/sed/)
 
 
 ## Related Lisp Libraries

@@ -30,16 +30,7 @@
 ;
 ; Original author: Jared Davis <jared@kookamara.com>
 
-; test.lsp -- basic unit testing of shellpool commands
-
-(ql:quickload "shellpool")
-(shellpool:start)
-
-(defparameter *ok* t)
-
-(defmacro die (&rest args)
-  `(progn (setq *ok* nil)
-          (error . ,args)))
+; basic.lisp -- tests of basic return/output capture
 
 (defun run-and-gather (cmd)
   "Runs command, gathering output, returns (values status stdout stderr)."
@@ -52,7 +43,7 @@
                       (case type
                         (:stdout (push line stdout))
                         (:stderr (push line stderr))
-                        (otherwise (die "Bad type ~s for line ~s~%" type line)))))
+                        (otherwise (error "Bad type ~s for line ~s~%" type line)))))
          (status (shellpool:run cmd :each-line each-line))
          (stdout (nreverse stdout))
          (stderr (nreverse stderr)))
@@ -61,7 +52,7 @@
 (defun check (name expected actual)
   (if (equal expected actual)
       (format t "OK ~a~%" name)
-    (die "FAIL ~a: Expected ~s, Found ~s~%" name expected actual)))
+    (error "FAIL ~a: Expected ~s, Found ~s~%" name expected actual)))
 
 (defun basic-test (cmd &key
                        (status '0)
@@ -129,7 +120,7 @@
    (check "status" status actual-status)
    (check "stdout" stdout actual-stdout)
    (or (consp actual-stderr)
-       (die "Expected an error message."))))
+       (error "Expected an error message."))))
 
 (check-bad-input "echo \"oops, forgot ending quote")
 
@@ -169,7 +160,4 @@
 ;;           (when (not line)
 ;;             (loop-finish)))))
 
-(if *ok*
-    (format t "All tests passed.")
-  (format t "Some tests failed."))
 
