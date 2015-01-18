@@ -273,7 +273,7 @@
 (defun make-run-command-string (filename)
   ;; Extremely tricky and carefully crafted bash code follows.
   ;;
-  ;; The core of this is basically the following:
+  ;; The core of this was originally the following:
   ;;
   ;;  0.     set -o pipefail
   ;;  1.     ((bash cmd.sh < /dev/null | sed -u 's/^/+/') 3>&1 1>&2 2>&3 | sed -u 's/^/-/') 2>&1
@@ -327,10 +327,30 @@
   ;;
   ;; The end strings are needed to determine when we've reached the end of the
   ;; output associated with this command.
+  ;;
+  ;; Portability tweak.
+  ;;
+  ;; When I ported this to PC-BSD, I found that the SED command there did not
+  ;; have the -u (unbuffered) option.  Fortunately our use of SED is quite
+  ;; minimal and, it turns out, we can emulate it entirely within BASH, as with
+  ;; just some simple functions, i.e.,
+  ;;
+  ;; add_plus() { local line; while read line; do echo "+$line"; done }
+  ;; add_minus() { local line; while read line; do echo "-$line"; done }
+  ;;
+  ;; Then our core can become:
+  ;;
+  ;;  ((bash cmd.sh < /dev/null | add_plus) 3>&1 1>&2 2>&3 | add_minus) 2>&1
+  ;;
+  ;; This is almost exactly what we'll use, except that we will prefix our
+  ;; functions with shellpool_ to reduce the chance of collision with the
+  ;; user's scripts.
   (concatenate 'string
                "set -o pipefail" nl
+               "shellpool_add_plus() { local line; while read line; do echo \"+$line\"; done }" nl
+               "shellpool_add_minus() { local line; while read line; do echo \"-$line\"; done }" nl
                "(((bash " filename
-               " < /dev/null | sed -u 's/^/+/') 3>&1 1>&2 2>&3 | sed -u 's/^/-/') 2>&1"
+               " < /dev/null | shellpool_add_plus) 3>&1 1>&2 2>&3 | shellpool_add_minus) 2>&1"
                " ; printf \"\\n" +status-line+ " $?\\\n\" ) &" nl
                "echo " +pid-line+ " $! 1>&2" nl
                "wait" nl
