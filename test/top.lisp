@@ -33,18 +33,24 @@
 ; top.lsp -- top level Shellpool test suite
 
 (ql:quickload "shellpool")
+(ql:quickload "uiop")
 (shellpool:start)
 
 (load "utils.lisp")
 
-(format t "~% -------- Doing basic tests -------------- ~%")
-(load "basic.lisp")
+(progn
+  (format t "~% -------- Doing basic tests -------------- ~%")
+  (load "basic.lisp"))
 
-(format t "~% -------- Doing kill tests --------------- ~%")
-(load "kill.lisp")
+#-cmucl  ;; Doesn't have real threads, can't do the 
+(progn
+  (format t "~% -------- Doing kill tests --------------- ~%")
+  (load "kill.lisp"))
 
 (format t "All tests passed.~%")
 (with-open-file (stream "test.ok"
                         :direction :output
                         :if-exists :supersede)
   (format stream "All tests passed.~%"))
+
+(uiop:quit)

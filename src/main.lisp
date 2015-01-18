@@ -193,25 +193,29 @@
 			:wait nil
 			:input :stream
 			:output :stream
-			:error :stream)))
+			:error :stream)
+    #+cmucl
+    (extensions:run-program bash nil
+                            :wait nil
+                            :input :stream
+                            :output :stream
+                            :error :stream)
+    ))
 
 (defun bash-in (sh)
-  #+ccl
-  (ccl:external-process-input-stream sh)
-  #+sbcl
-  (sb-ext:process-input sh))
+  #+ccl   (ccl:external-process-input-stream sh)
+  #+sbcl  (sb-ext:process-input sh)
+  #+cmucl (extensions:process-input sh))
 
 (defun bash-out (sh)
-  #+ccl
-  (ccl:external-process-output-stream sh)
-  #+sbcl
-  (sb-ext:process-output sh))
+  #+ccl   (ccl:external-process-output-stream sh)
+  #+sbcl  (sb-ext:process-output sh)
+  #+cmucl (extensions:process-output sh))
 
 (defun bash-err (sh)
-  #+ccl
-  (ccl:external-process-error-stream sh)
-  #+sbcl
-  (sb-ext:process-error sh))
+  #+ccl   (ccl:external-process-error-stream sh)
+  #+sbcl  (sb-ext:process-error sh)
+  #+cmucl (extensions:process-error sh))
 
 (defun add-runners (n)
   ;; Assumes the state lock is held.

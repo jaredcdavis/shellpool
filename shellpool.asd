@@ -32,7 +32,7 @@
 
 (in-package :asdf-user)
 
-#-(or ccl sbcl)
+#-(or ccl sbcl cmucl)
 (error "Shellpool has not yet been ported to this Lisp; patches welcome.")
 
 #+mswindows

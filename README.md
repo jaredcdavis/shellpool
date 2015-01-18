@@ -50,6 +50,8 @@ Lisps:
 
  - CCL
  - SBCL
+ - CMUCL (killing not well tested due to lack of threads)
+ - 
 
 Operating Systems:
 
