@@ -44,5 +44,7 @@
 (load "kill.lisp")
 
 (format t "All tests passed.~%")
-(with-open-file (stream "test.ok")
+(with-open-file (stream "test.ok"
+                        :direction :output
+                        :if-exists :supersede)
   (format stream "All tests passed.~%"))
