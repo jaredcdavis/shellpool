@@ -74,7 +74,6 @@ Lisp Libraries:
 Required Utilities:
 
   - [Bash](https://www.gnu.org/software/bash/)
-  - [Sed](https://www.gnu.org/software/sed/)
 
 
 ## Related Lisp Libraries
