@@ -50,8 +50,8 @@ Lisps:
 
  - CCL
  - SBCL
- - CMUCL (killing not well tested due to lack of threads)
- - 
+ - CMUCL (can't test killing due to lack of threads)
+ - Allegro (kill tests currently fail for unknown reasons)
 
 Operating Systems:
 

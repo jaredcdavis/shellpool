@@ -120,6 +120,7 @@
              (elapsed  (coerce (- end-time start-time) 'float))
              (limit    (* max-time internal-time-units-per-second)))
         (msg " - Test passed in ~s seconds.~%~%" (/ elapsed internal-time-units-per-second))
+        (sleep .2)
         (unless (< elapsed limit)
           (error "Seems like that took too long."))))))
 

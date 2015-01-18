@@ -30,12 +30,14 @@
 ;
 ; Original author: Jared Davis <jared@kookamara.com>
 
-(in-package :asdf-user)
+;; BOZO this seems to cause problems for allegro?
+;; Ah, pjb says that the .asd file shouldn't have an in-package form.
+;; (in-package :asdf-user)
 
-#-(or ccl sbcl cmucl)
+#-(or ccl sbcl cmucl allegro)
 (error "Shellpool has not yet been ported to this Lisp; patches welcome.")
 
-#+mswindows
+#+(or mswindows windows win32)
 (error "Shellpool has not yet been ported to Windows; patches welcome.")
 
 (defsystem "shellpool"
@@ -48,5 +50,6 @@
                :bt-semaphore
                )
   :components ((:file "src/packages")
-               (:file "src/main")))
+               (:file "src/main"))
+  :serial t)
 

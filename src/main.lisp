@@ -179,6 +179,12 @@
 		  (return-from find-bash path)))
 	  (error "Bash not found among ~s" paths-to-try)))))
 
+#+allegro
+(defstruct bashprocess
+  (stdin)
+  (stdout)
+  (stderr))
+
 (defun make-bash ()
   (let ((bash (find-bash)))
     #+ccl
@@ -200,22 +206,36 @@
                             :input :stream
                             :output :stream
                             :error :stream)
-    ))
+    #+allegro
+    (multiple-value-bind (stdin stdout stderr pid)
+        (excl:run-shell-command bash
+                                :wait nil
+                                :input :stream
+                                :output :stream
+                                :error-output :stream
+                                :separate-streams t)
+      (declare (ignore pid))
+      (make-bashprocess :stdin stdin
+                        :stdout stdout
+                        :stderr stderr))))
 
 (defun bash-in (sh)
-  #+ccl   (ccl:external-process-input-stream sh)
-  #+sbcl  (sb-ext:process-input sh)
-  #+cmucl (extensions:process-input sh))
+  #+ccl     (ccl:external-process-input-stream sh)
+  #+sbcl    (sb-ext:process-input sh)
+  #+cmucl   (extensions:process-input sh)
+  #+allegro (bashprocess-stdin sh))
 
 (defun bash-out (sh)
-  #+ccl   (ccl:external-process-output-stream sh)
-  #+sbcl  (sb-ext:process-output sh)
-  #+cmucl (extensions:process-output sh))
+  #+ccl     (ccl:external-process-output-stream sh)
+  #+sbcl    (sb-ext:process-output sh)
+  #+cmucl   (extensions:process-output sh)
+  #+allegro (bashprocess-stdout sh))
 
 (defun bash-err (sh)
-  #+ccl   (ccl:external-process-error-stream sh)
-  #+sbcl  (sb-ext:process-error sh)
-  #+cmucl (extensions:process-error sh))
+  #+ccl     (ccl:external-process-error-stream sh)
+  #+sbcl    (sb-ext:process-error sh)
+  #+cmucl   (extensions:process-error sh)
+  #+allegro (bashprocess-stderr sh))
 
 (defun add-runners (n)
   ;; Assumes the state lock is held.
