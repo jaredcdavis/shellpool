@@ -35,23 +35,21 @@ to command-line input from the user or for
 [TTY](https://en.wikipedia.org/wiki/Terminal_emulator)-based programs.
 
 
-## Documentation
+## Resources
+
+ - [Github Project](https://github.com/jaredcdavis/shellpool)
 
  - [Installation](INSTALL.md)
 
  - [API Documentation](DOC.md)
-
- - Please use the [Github issue
-   tracker](https://github.com/jaredcdavis/shellpool/issues) for any bugs or
-   enhancement requests.
 
 
 ## Portability
 
 Lisps:
 
- - CCL (to start with)
- - SBCL (not yet, but will be done for 0.1)
+ - CCL
+ - SBCL
 
 Operating Systems:
 
@@ -81,20 +79,22 @@ Required Utilities:
 
 ## Related Lisp Libraries
 
+If shellpool isn't quite right for you, you might look at these other Lisp
+libraries.
+
  - [inferior-shell](http://common-lisp.net/projects/qitab/) is allegedly very
    complete and portable for synchronous shells.  It has fancy features like
    support for remote execution (via ssh) and a domain specific language for
    constructing pipelines of shell commands.
 
  - [trivial-shell](http://common-lisp.net/project/trivial-shell/) is less full
-   featured but apparently highly portable.
+   featured than `inferior-shell,` but is apparently highly portable.
 
  - [ASDF](http://common-lisp.net/project/asdf/asdf.html) has `run-program`
    shell-command with many options.
 
  - [external-program](https://github.com/sellout/external-program) is a wrapper
-   for `run-program` functionality.  It might be good to use this internally to
-   run our shells and thereby avoid CCL-specific features.
+   for `run-program` functionality.
 
 
 ## License and History

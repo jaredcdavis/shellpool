@@ -39,14 +39,18 @@
 (defvar *debug* nil
   "Change to T for verbose debugging messages.")
 
-(defmacro debug (&rest args)
+(defmacro debug-msg (&rest args)
   "Like (format t ...) but only prints if debugging is enabled."
   `(when *debug*
      (format t "Shellpool: ")
      (format t ,@args)
      (force-output)))
 
-(defconstant nl
+(defmacro define-constant (name value &optional doc)
+  `(defconstant ,name (if (boundp ',name) (symbol-value ',name) ,value)
+     ,@(when doc (list doc))))
+
+(define-constant nl
   (coerce (list #\Newline) 'string)
   "Newline as a string.  Convenient in string concatenations as a way to insert
    newlines without having to ruin your indenting.")
@@ -134,7 +138,7 @@
   (runners))
 
 (defparameter *state*
-  (make-state :lock       (bt:make-lock)
+  (make-state :lock       (bt:make-lock "shellpool state lock")
               :aux        nil
               :sem        (bt-sem:make-semaphore)
               :runners    nil))
@@ -163,47 +167,62 @@
          (push ,name (state-runners *state*))
          (bt-sem:signal-semaphore (state-sem *state*))))))
 
-(defun make-new-runner ()
+(defun make-bash ()
+  #+ccl
   (ccl:run-program "/bin/bash" nil
                    :wait   nil
                    :input  :stream
                    :output :stream
                    :error  :stream
-                   :sharing :external))
+                   :sharing :external)
+  #+sbcl
+  (sb-ext:run-program "/bin/bash" nil
+                      :wait nil
+                      :input :stream
+                      :output :stream
+                      :error :stream))
+
+(defun bash-in (sh)
+  #+ccl
+  (ccl:external-process-input-stream sh)
+  #+sbcl
+  (sb-ext:process-input sh))
+
+(defun bash-out (sh)
+  #+ccl
+  (ccl:external-process-output-stream sh)
+  #+sbcl
+  (sb-ext:process-output sh))
+
+(defun bash-err (sh)
+  #+ccl
+  (ccl:external-process-error-stream sh)
+  #+sbcl
+  (sb-ext:process-error sh))
 
 (defun add-runners (n)
-  (with-state-lock
-    (let ((state *state*))
-      (loop for i from 1 to n do
-            (push (make-new-runner) (state-runners state)))
-      (bt-sem:signal-semaphore (state-sem state) n))))
-
-(defun shell-alive-p (x)
-  (and (ccl::external-process-p x)
-       (eq (ccl:external-process-status x) :running)))
+  ;; Assumes the state lock is held.
+  (let ((state *state*))
+    (loop for i from 1 to n do
+          (push (make-bash) (state-runners state)))
+    (bt-sem:signal-semaphore (state-sem state) n)))
 
 (defun start (&optional (n '1))
   (with-state-lock
     (unless (state-aux *state*)
-      (debug "START: starting aux shell~%")
-      (setf (state-aux *state*)
-            (ccl:run-program "/bin/bash" nil
-                             :wait nil
-                             :input  :stream
-                             :output :stream
-                             :error  :stream
-                             :sharing :external)))
+      (debug-msg "START: starting aux shell~%")
+      (setf (state-aux *state*) (make-bash)))
     (add-runners n)
     nil))
 
 
-(defconstant +exit-line+   "SHELLPOOL_EXIT")
-(defconstant +status-line+ "SHELLPOOL_STATUS")
-(defconstant +pid-line+    "SHELLPOOL_PID")
+(define-constant +exit-line+   "SHELLPOOL_EXIT")
+(define-constant +status-line+ "SHELLPOOL_STATUS")
+(define-constant +pid-line+    "SHELLPOOL_PID")
 
 (defun parse-pid-line (line)
   ;; Given a line like SHELLPOOL_PID 1234, we return 1234.
-  (debug "Parsing PID line: ~s~%" line)
+  (debug-msg "Parsing PID line: ~s~%" line)
   (unless (strprefixp +pid-line+ line)
     (error "Shellpool error: bad pid line: ~s." line))
   (multiple-value-bind (val pos)
@@ -213,10 +232,10 @@
 
 (defun kill (pid)
   ;; Use the aux shell to try to kill process PID.
-  (debug "KILL: killing ~s.~%" pid)
+  (debug-msg "KILL: killing ~s.~%" pid)
   (with-state-lock
     (let* ((aux    (state-aux *state*))
-           (aux-in (ccl:external-process-input-stream aux)))
+           (aux-in (bash-in aux)))
 
 ; Wow, this is tricky.  Want to kill not only the process, but all processes
 ; that it spawns.  To do this:
@@ -234,7 +253,7 @@
 
 (defun default-each-line (line type)
   (declare (type string line))
-  (debug "Default streaming line (type ~s): ~s ~%" type line)
+  (debug-msg "Default streaming line (type ~s): ~s ~%" type line)
   (case type
     (:stdout
      (write-line line)
@@ -324,9 +343,9 @@
   (check-type each-line function)
 
   (with-runner runner
-    (let* ((bash-in       (ccl:external-process-input-stream runner))
-           (bash-out      (ccl:external-process-output-stream runner))
-           (bash-err      (ccl:external-process-error-stream runner))
+    (let* ((bash-in       (bash-in runner))
+           (bash-out      (bash-out runner))
+           (bash-err      (bash-err runner))
            (pid           nil)
            (exit-status   nil)
            (line          nil)
@@ -341,15 +360,15 @@
 
         (let ((cmd (make-run-command-string (namestring tempfile))))
 
-          (debug "Temp path is ~s~%" (namestring tempfile))
-          (debug "<Bash Commands>~%~s~%</Bash Commands>~%" cmd)
+          (debug-msg "Temp path is ~s~%" (namestring tempfile))
+          (debug-msg "<Bash Commands>~%~s~%</Bash Commands>~%" cmd)
 
           (write-line cmd bash-in)
           (finish-output bash-in)
 
           (setq pid (parse-pid-line (read-line bash-err)))
 
-          (debug "PID is ~s.~%" pid)
+          (debug-msg "PID is ~s.~%" pid)
 
           (unwind-protect
 
@@ -357,21 +376,21 @@
                 ;; Read command output until we find the exit line.
                 (loop do
                       (setq line (read-line bash-out))
-                      (debug "** Output line: ~s~%" line)
+                      (debug-msg "** Output line: ~s~%" line)
                       (cond ((equal line "")
-                             (debug "Ignoring blank line.~%"))
+                             (debug-msg "Ignoring blank line.~%"))
                             ((equal line +exit-line+)
-                             (debug "Exit line, done reading STDOUT.~%")
+                             (debug-msg "Exit line, done reading STDOUT.~%")
                              (setq stdout-exit t)
                              (loop-finish))
                             ((eql (char line 0) #\+)
-                             (debug "Stdout line, invoking callback.~%")
+                             (debug-msg "Stdout line, invoking callback.~%")
                              (funcall each-line (subseq line 1 nil) :stdout))
                             ((eql (char line 0) #\-)
-                             (debug "Stderr line, invoking callback.~%")
+                             (debug-msg "Stderr line, invoking callback.~%")
                              (funcall each-line (subseq line 1 nil) :stderr))
                             ((strprefixp +status-line+ line)
-                             (debug "Exit status line: ~s~%" line)
+                             (debug-msg "Exit status line: ~s~%" line)
                              (setq exit-status
                                    (parse-integer line :start (+ 1 (length +status-line+)))))
                             (t
@@ -380,11 +399,11 @@
                 ;; Read stderr until we find the exit line.
                 (loop do
                       (setq line (read-line bash-err))
-                      (debug "** Stderr line: ~s~%" line)
+                      (debug-msg "** Stderr line: ~s~%" line)
                       (cond ((equal line "")
-                             (debug "Ignoring blank line.~%"))
+                             (debug-msg "Ignoring blank line.~%"))
                             ((equal line +exit-line+)
-                             (debug "Exit line, done reading STDERR.~%")
+                             (debug-msg "Exit line, done reading STDERR.~%")
                              (setq stderr-exit t)
                              (loop-finish))
                             (t
@@ -393,7 +412,7 @@
             (progn
               ;; Cleanup in case of interrupts.
               (when (not stdout-exit)
-                (debug "Shutting down process ~s.~%" pid)
+                (debug-msg "Shutting down process ~s.~%" pid)
                 (kill pid)
                 (loop do
                       (setq line (read-line bash-out))
@@ -406,23 +425,23 @@
                         ;; So now we are more permissive.  We don't try to capture
                         ;; the <partial output> because we're just skipping these
                         ;; lines anyway.
-                        (debug "Recovery: Got EXIT on STDOUT.~%")
-                        (debug "Stdout line: ~s, suffixp: ~s~%"
+                        (debug-msg "Recovery: Got EXIT on STDOUT.~%")
+                        (debug-msg "Stdout line: ~s, suffixp: ~s~%"
                                line (strsuffixp +exit-line+ line))
                         (loop-finish))
-                      (debug "Recovery: Stdout: Skip ~s.~%" line)))
+                      (debug-msg "Recovery: Stdout: Skip ~s.~%" line)))
 
               (when (not stderr-exit)
                 (loop do
                       (setq line (read-line bash-err))
                       (when (strsuffixp +exit-line+ line)
-                        (debug "Recovery: Got EXIT on STDERR.~%")
-                        (debug "stderr line: ~s, suffixp: ~s~%"
+                        (debug-msg "Recovery: Got EXIT on STDERR.~%")
+                        (debug-msg "stderr line: ~s, suffixp: ~s~%"
                                line (strsuffixp +exit-line+ line))
                         (loop-finish))
-                      (debug "Recovery: Stderr: Skip ~s.~%" line))))))
+                      (debug-msg "Recovery: Stderr: Skip ~s.~%" line))))))
 
-        (debug "RUN done.~%")
+        (debug-msg "RUN done.~%")
 
         (unless (integerp exit-status)
           (error "Somehow didn't get the exit status?"))
@@ -435,9 +454,9 @@
 (defun run-background (cmd)
   (with-state-lock
     (let* ((aux    (state-aux *state*))
-           (aux-in (ccl:external-process-input-stream *aux-shell*))
+           (aux-in (bash-in aux))
            (cmd    (concatenate 'string "(" cmd ") &" nl)))
-      (debug "BG: ~s~%" cmd)
+      (debug-msg "BG: ~s~%" cmd)
       (write-line cmd aux-in)
       (finish-output aux-in)))
   nil)
