@@ -32,6 +32,32 @@
 
 ; utils.lisp -- just some utility functions
 
+(let ((sem   (bt-sem:make-semaphore))
+      (lock  (bt:make-lock))
+      (queue nil))
+
+  (defun msg (msg &rest args)
+    "Like format, but safe for printing messages from multiple threads."
+    (bt:with-lock-held (lock)
+                       (push (cons msg args) queue))
+    (bt-sem:signal-semaphore sem))
+
+  (bt:make-thread
+   ;; Start up a thread to process MSG calls.
+   (lambda ()
+     (loop do
+           (unless (bt-sem:wait-on-semaphore sem)
+             (error "Failed to get the print semaphore."))
+           (let ((pair nil))
+             (bt:with-lock-held (lock)
+                                (setq pair (pop queue)))
+             (let ((msg (car pair))
+                   (args (cdr pair)))
+               (eval `(format t ,msg . ,args))
+               (force-output)))))))
+
+
+
 (defun ezrun (cmd)
   "Run a program, ensure it exits with status 0 and prints nothing to stderr,
    and return its stdout output as a string list."
@@ -74,27 +100,3 @@
 
 
 
-
-(let ((sem   (bt-sem:make-semaphore))
-      (lock  (bt:make-lock))
-      (queue nil))
-
-  (defun msg (msg &rest args)
-    "Like format, but safe for printing messages from multiple threads."
-    (bt:with-lock-held (lock)
-                       (push (cons msg args) queue))
-    (bt-sem:signal-semaphore sem))
-
-  (defun print-thread ()
-    (loop do
-          (unless (bt-sem:wait-on-semaphore sem)
-            (error "Failed to get the print semaphore."))
-          (let ((pair nil))
-            (bt:with-lock-held (lock)
-                               (setq pair (pop queue)))
-            (let ((msg (car pair))
-                  (args (cdr pair)))
-              (eval `(format t ,msg . ,args))
-              (force-output)))))
-
-  (bt:make-thread 'print-thread))

@@ -7,9 +7,18 @@ $|=1;
 
 if (@ARGV != 1)
 {
-    print "Usage: sleep.pl SECONDS\n";
+    print "Usage: badsleep.pl SECONDS\n";
     exit(1);
 }
+
+sub ignoresig {
+    my $signame = shift;
+    print "Ignoring SIG$signame\n";
+}
+
+$SIG{'INT'} = 'ignoresig';
+$SIG{'HUP'} = 'ignoresig';
+$SIG{'TERM'} = 'ignoresig';
 
 my $SECS = $ARGV[0];
 

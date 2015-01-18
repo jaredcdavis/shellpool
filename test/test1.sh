@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 echo "stdout line 1"
 echo "stdout line 2"

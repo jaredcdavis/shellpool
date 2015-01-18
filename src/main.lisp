@@ -202,10 +202,10 @@
 (defconstant +pid-line+    "SHELLPOOL_PID")
 
 (defun parse-pid-line (line)
-  ;; Given a line like TSHELL_PID 1234, we return 1234.
-  (debug "Parsing PID line: ~a~%" line)
+  ;; Given a line like SHELLPOOL_PID 1234, we return 1234.
+  (debug "Parsing PID line: ~s~%" line)
   (unless (strprefixp +pid-line+ line)
-    (error "TSHELL error: bad pid line: ~a." line))
+    (error "Shellpool error: bad pid line: ~s." line))
   (multiple-value-bind (val pos)
       (parse-integer (subseq line (+ 1 (length +pid-line+))))
     (declare (ignore pos))
@@ -213,7 +213,7 @@
 
 (defun kill (pid)
   ;; Use the aux shell to try to kill process PID.
-  (debug "KILL: killing ~a.~%" pid)
+  (debug "KILL: killing ~s.~%" pid)
   (with-state-lock
     (let* ((aux    (state-aux *state*))
            (aux-in (ccl:external-process-input-stream aux)))
@@ -227,7 +227,7 @@
 
 ; BOZO this may all be different now that we have a subshell running our stuff.
 
-      (format aux-in "PARENT=`ps -o pgrp ~a | tail -1`~%" pid)
+      (format aux-in "PARENT=`ps -o pgrp ~s | tail -1`~%" pid)
       (format aux-in "NOT_PARENT=`pgrep -g $PARENT | grep -v $PARENT`~%")
       (format aux-in "kill -9 $NOT_PARENT~%")
       (force-output aux-in))))
@@ -251,7 +251,7 @@
        (progn . ,forms)
      (delete-file ,filename)))
 
-(defun make-run-command-string (tempfile)
+(defun make-run-command-string (filename)
   ;; Extremely tricky and carefully crafted bash code follows.
   ;;
   ;; The core of this is basically the following:
@@ -310,7 +310,7 @@
   ;; output associated with this command.
   (concatenate 'string
                "set -o pipefail" nl
-               "(((bash " (namestring tempfile)
+               "(((bash " filename
                " < /dev/null | sed -u 's/^/+/') 3>&1 1>&2 2>&3 | sed -u 's/^/-/') 2>&1"
                " ; printf \"\\n" +status-line+ " $?\\\n\" ) &" nl
                "echo " +pid-line+ " $! 1>&2" nl
@@ -339,17 +339,17 @@
                            (write-line cmd stream))))
       (with-file-to-be-deleted tempfile
 
-        (let ((cmd (make-run-command-string tempfile)))
+        (let ((cmd (make-run-command-string (namestring tempfile))))
 
           (debug "Temp path is ~s~%" (namestring tempfile))
-          (debug "<Bash Commands>~%~a~%</Bash Commands>~%" cmd)
+          (debug "<Bash Commands>~%~s~%</Bash Commands>~%" cmd)
 
           (write-line cmd bash-in)
           (finish-output bash-in)
 
           (setq pid (parse-pid-line (read-line bash-err)))
 
-          (debug "PID is ~a.~%" pid)
+          (debug "PID is ~s.~%" pid)
 
           (unwind-protect
 
@@ -393,7 +393,7 @@
             (progn
               ;; Cleanup in case of interrupts.
               (when (not stdout-exit)
-                (format t "~%; Note: tshell shutting down process ~a.~%" pid)
+                (debug "Shutting down process ~s.~%" pid)
                 (kill pid)
                 (loop do
                       (setq line (read-line bash-out))
@@ -406,23 +406,23 @@
                         ;; So now we are more permissive.  We don't try to capture
                         ;; the <partial output> because we're just skipping these
                         ;; lines anyway.
-                        (debug "TSHELL_RECOVER: TSHELL_EXIT on STDOUT.~%")
-                        (debug "stdout line: ~s, suffixp: ~a~%"
+                        (debug "Recovery: Got EXIT on STDOUT.~%")
+                        (debug "Stdout line: ~s, suffixp: ~s~%"
                                line (strsuffixp +exit-line+ line))
                         (loop-finish))
-                      (debug "TSHELL_RECOVER stdout: Skip ~a.~%" line)))
+                      (debug "Recovery: Stdout: Skip ~s.~%" line)))
 
               (when (not stderr-exit)
                 (loop do
                       (setq line (read-line bash-err))
                       (when (strsuffixp +exit-line+ line)
-                        (debug "TSHELL_RECOVER: TSHELL_EXIT on STDERR.~%")
-                        (debug "stderr line: ~s, suffixp: ~a~%"
+                        (debug "Recovery: Got EXIT on STDERR.~%")
+                        (debug "stderr line: ~s, suffixp: ~s~%"
                                line (strsuffixp +exit-line+ line))
                         (loop-finish))
-                      (debug "TSHELL_RECOVER stderr: Skip ~a on stderr.~%" line))))))
+                      (debug "Recovery: Stderr: Skip ~s.~%" line))))))
 
-        (debug "TSHELL_RUN done.~%")
+        (debug "RUN done.~%")
 
         (unless (integerp exit-status)
           (error "Somehow didn't get the exit status?"))

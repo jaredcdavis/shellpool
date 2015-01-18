@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 echo "stdout line 1"
 sleep 1
