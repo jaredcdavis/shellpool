@@ -167,20 +167,30 @@
          (push ,name (state-runners *state*))
          (bt-sem:signal-semaphore (state-sem *state*))))))
 
+(defun find-bash ()
+  (let ((paths-to-try '("/bin/bash"
+			"/usr/bin/bash"
+			"/usr/local/bin/bash")))
+    (loop for path in paths-to-try do
+	  (when (cl-fad::file-exists-p path)
+	    (return-from find-bash path)))
+    (error "Bash not found among ~s" paths-to-try)))
+
 (defun make-bash ()
-  #+ccl
-  (ccl:run-program "/bin/bash" nil
-                   :wait   nil
-                   :input  :stream
-                   :output :stream
-                   :error  :stream
-                   :sharing :external)
-  #+sbcl
-  (sb-ext:run-program "/bin/bash" nil
-                      :wait nil
-                      :input :stream
-                      :output :stream
-                      :error :stream))
+  (let ((bash (find-bash)))
+    #+ccl
+    (ccl:run-program bash nil
+		     :wait   nil
+		     :input  :stream
+		     :output :stream
+		     :error  :stream
+		     :sharing :external)
+    #+sbcl
+    (sb-ext:run-program bash nil
+			:wait nil
+			:input :stream
+			:output :stream
+			:error :stream)))
 
 (defun bash-in (sh)
   #+ccl

@@ -43,5 +43,6 @@
 (format t "~% -------- Doing kill tests --------------- ~%")
 (load "kill.lisp")
 
-
 (format t "All tests passed.~%")
+(with-open-file (stream "test.ok")
+  (format stream "All tests passed.~%"))
