@@ -54,7 +54,7 @@ Lisps:
 Operating Systems:
 
  - Linux (to start with)
- - BSD (not tested yet)
+ - BSD (killing doesn't work well yet)
 
 There is reasonably good [test suite](test/) that can be used to help ensure
 compatibility with your system.

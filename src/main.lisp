@@ -167,14 +167,17 @@
          (push ,name (state-runners *state*))
          (bt-sem:signal-semaphore (state-sem *state*))))))
 
-(defun find-bash ()
-  (let ((paths-to-try '("/bin/bash"
-			"/usr/bin/bash"
-			"/usr/local/bin/bash")))
-    (loop for path in paths-to-try do
-	  (when (cl-fad::file-exists-p path)
-	    (return-from find-bash path)))
-    (error "Bash not found among ~s" paths-to-try)))
+(let ((found-bash))
+  (defun find-bash ()
+    (or found-bash
+	(let ((paths-to-try '("/bin/bash"
+			      "/usr/bin/bash"
+			      "/usr/local/bin/bash")))
+	  (loop for path in paths-to-try do
+		(when (cl-fad::file-exists-p path)
+		  (setq found-bash path)
+		  (return-from find-bash path)))
+	  (error "Bash not found among ~s" paths-to-try)))))
 
 (defun make-bash ()
   (let ((bash (find-bash)))
@@ -359,7 +362,7 @@
                "set -o pipefail" nl
                "shellpool_add_plus() { local line; while read line; do echo \"+$line\"; done }" nl
                "shellpool_add_minus() { local line; while read line; do echo \"-$line\"; done }" nl
-               "(((bash " filename
+               "(((" (find-bash) " " filename
                " < /dev/null | shellpool_add_plus) 3>&1 1>&2 2>&3 | shellpool_add_minus) 2>&1"
                " ; printf \"\\n" +status-line+ " $?\\\n\" ) &" nl
                "echo " +pid-line+ " $! 1>&2" nl
@@ -381,9 +384,11 @@
            (line          nil)
            (stdout-exit   nil)
            (stderr-exit   nil)
+	   (bash          (find-bash))
            (tempfile      (cl-fad:with-output-to-temporary-file
                            (stream :template "shellpool-%.tmp")
-                           (write-line "#!/bin/sh" stream)
+			   (write-string "#!" stream)
+			   (write-line bash stream)
                            (write-line "trap \"kill -- -$BASHPID\" SIGINT SIGTERM" stream)
                            (write-line cmd stream))))
       (with-file-to-be-deleted tempfile
