@@ -56,11 +56,14 @@
                (eval `(format t ,msg . ,args))
                (force-output)))))))
 
-
+(msg "Test message.~%")
+(sleep 0.2)
 
 (defun ezrun (cmd)
   "Run a program, ensure it exits with status 0 and prints nothing to stderr,
    and return its stdout output as a string list."
+  (msg "Starting ezrun.~%")
+  (sleep 0.2)
   (let* ((stdout nil)
          (stderr nil)
          (each-line (lambda (line type)
@@ -68,7 +71,9 @@
                         (:stdout (push line stdout))
                         (:stderr (push line stderr))
                         (otherwise (error "Bad type ~s for line ~s~%" type line)))))
+         (blah (format t "RUNNING~%"))
          (status (shellpool:run cmd :each-line each-line))
+         (blah (format t "RETURNED~%"))
          (stdout (nreverse stdout))
          (stderr (nreverse stderr)))
     (when stderr
@@ -91,12 +96,17 @@
             (return-from has-process t)))
     nil))
 
+(msg "Testing out has-process.~%")
+(sleep 0.2)
+
+(setq shellpool:*debug* t)
+
 (unless (has-process "bash")
   (error "Doesn't seem like has-process is working right: no bash shells are running."))
 
 (when (has-process "lollipops-dancing-on-my-elbows.exe")
   (error "Doesn't seem like has-process is working right: unlikely process exists."))
 
-
-
-
+(setq shellpool:*debug* nil)
+(msg "Has-process seems ok.~%")
+(sleep 0.2)

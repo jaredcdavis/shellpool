@@ -35,10 +35,10 @@
 ;; (in-package :asdf-user)
 
 #-(or ccl sbcl cmucl allegro)
-(error "Shellpool has not yet been ported to this Lisp; patches welcome.")
+(error "~%~%Error: Shellpool has not yet been ported to this Lisp; patches welcome.~%~%")
 
 #+(or mswindows windows win32)
-(error "Shellpool has not yet been ported to Windows; patches welcome.")
+(error "~%~%Error: Shellpool has not yet been ported to Windows; patches welcome.~%~%")
 
 (defsystem "shellpool"
   :description "Interface from Common Lisp to External Programs"

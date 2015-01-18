@@ -179,7 +179,7 @@
 		  (return-from find-bash path)))
 	  (error "Bash not found among ~s" paths-to-try)))))
 
-#+allegro
+#+(or allegro lispworks)
 (defstruct bashprocess
   (stdin)
   (stdout)
@@ -217,25 +217,45 @@
       (declare (ignore pid))
       (make-bashprocess :stdin stdin
                         :stdout stdout
-                        :stderr stderr))))
+                        :stderr stderr))
+    #+lispworks
+    ;; This doesn't seem to work at all.
+    (multiple-value-bind (stdio stderr pid)
+        (system:run-shell-command bash
+                                  :wait nil
+                                  :input :stream
+                                  :output :stream
+                                  :error-output :stream)
+      (declare (ignore pid))
+      (make-bashprocess :stdin stdio
+                        :stdout stdio
+                        :stderr stderr))
+
+    ;; CLISP has a run-program command which looks mostly similar to that of
+    ;; many of these other Lisps, but it doesn't seem to provide any stderr
+    ;; handling, which makes it hard to handle with the current setup.  So, I
+    ;; haven't tried to support it yet.  Maybe I could rework things so that
+    ;; the harness never prints anything to standard error, 
+
+    ))
 
 (defun bash-in (sh)
   #+ccl     (ccl:external-process-input-stream sh)
   #+sbcl    (sb-ext:process-input sh)
   #+cmucl   (extensions:process-input sh)
-  #+allegro (bashprocess-stdin sh))
+  #+(or allegro lispworks) (bashprocess-stdin sh))
 
 (defun bash-out (sh)
   #+ccl     (ccl:external-process-output-stream sh)
   #+sbcl    (sb-ext:process-output sh)
   #+cmucl   (extensions:process-output sh)
-  #+allegro (bashprocess-stdout sh))
+  #+(or allegro lispworks) (bashprocess-stdout sh))
 
 (defun bash-err (sh)
   #+ccl     (ccl:external-process-error-stream sh)
   #+sbcl    (sb-ext:process-error sh)
   #+cmucl   (extensions:process-error sh)
-  #+allegro (bashprocess-stderr sh))
+  #+(or allegro lispworks) (bashprocess-stderr sh))
 
 (defun add-runners (n)
   ;; Assumes the state lock is held.
@@ -339,7 +359,7 @@
   ;;
   ;;  0.   set -o pipefail                        # As above, and doesn't bother anything below
   ;;  1.   ( <core 1> ; printf "\nEXIT $?\n") &   # Run in background (so we can get PID), print exit status
-  ;;  2.   echo PID $! 1>&2                       # Print the PID to STDOUT.
+  ;;  2.   echo PID $! 1>&2                       # Print the PID to stderr.
   ;;  3.   wait                                   # Wait for the command to finish
   ;;  4.   echo ""                                # Make sure we get a newline at end of stdout
   ;;  5.   echo "" 1>&2                           # Make sure we get a newline at end of stderr
@@ -398,8 +418,10 @@
 (defun run (cmd &key (each-line #'default-each-line))
   (check-type cmd string)
   (check-type each-line function)
+  (debug-msg "Going into run.~%")
 
   (with-runner runner
+    (debug-msg "Got with-runner~%")
     (let* ((bash-in       (bash-in runner))
            (bash-out      (bash-out runner))
            (bash-err      (bash-err runner))
