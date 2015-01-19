@@ -237,25 +237,32 @@
     ;; haven't tried to support it yet.  Maybe I could rework things so that
     ;; the harness never prints anything to standard error, 
 
-    ))
+    #+abcl
+    (system:run-program bash nil :wait nil)))
 
 (defun bash-in (sh)
   #+ccl     (ccl:external-process-input-stream sh)
   #+sbcl    (sb-ext:process-input sh)
   #+cmucl   (extensions:process-input sh)
-  #+(or allegro lispworks) (bashprocess-stdin sh))
+  #+(or allegro lispworks) (bashprocess-stdin sh)
+  #+abcl    (system:process-input sh)
+  )
 
 (defun bash-out (sh)
   #+ccl     (ccl:external-process-output-stream sh)
   #+sbcl    (sb-ext:process-output sh)
   #+cmucl   (extensions:process-output sh)
-  #+(or allegro lispworks) (bashprocess-stdout sh))
+  #+(or allegro lispworks) (bashprocess-stdout sh)
+  #+abcl    (system:process-output sh)
+  )
 
 (defun bash-err (sh)
   #+ccl     (ccl:external-process-error-stream sh)
   #+sbcl    (sb-ext:process-error sh)
   #+cmucl   (extensions:process-error sh)
-  #+(or allegro lispworks) (bashprocess-stderr sh))
+  #+(or allegro lispworks) (bashprocess-stderr sh)
+  #+abcl    (system:process-error sh)
+  )
 
 (defun add-runners (n)
   ;; Assumes the state lock is held.

@@ -50,10 +50,11 @@ Lisps:
 
  - CCL: fully supported
  - SBCL: fully supported
- - CMUCL: basic running works, can't do kill-tests due to lack of threads
- - Allegro: basic running works, kill-tests currently fail for unknown reasons
- - Lispworks; doesn't work, ran into strange errors, haven't debugged
- - CLISP: doesn't work, run-program lacks stderr support
+ - CMUCL: basic running works, kill-tests fail (lacks multithreading)
+ - Allegro: basic running works, kill-tests fail (reason unknown)
+ - ABCL: basic running works, kill-tests fail (reason unknown)
+ - Lispworks; doesn't work (strange errors, haven't debugged)
+ - CLISP: doesn't work (run-program lacks stderr support)
 
 Operating Systems:
 
