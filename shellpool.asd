@@ -34,7 +34,7 @@
 ;; Ah, pjb says that the .asd file shouldn't have an in-package form.
 ;; (in-package :asdf-user)
 
-#-(or ccl sbcl cmucl allegro abcl)
+#-(or ccl sbcl cmucl allegro abcl lispworks)
 (error "~%~%Error: Shellpool has not yet been ported to this Lisp; patches welcome.~%~%")
 
 #+(or mswindows windows win32)

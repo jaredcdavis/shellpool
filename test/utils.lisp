@@ -71,9 +71,7 @@
                         (:stdout (push line stdout))
                         (:stderr (push line stderr))
                         (otherwise (error "Bad type ~s for line ~s~%" type line)))))
-         (blah (format t "RUNNING~%"))
          (status (shellpool:run cmd :each-line each-line))
-         (blah (format t "RETURNED~%"))
          (stdout (nreverse stdout))
          (stderr (nreverse stderr)))
     (when stderr

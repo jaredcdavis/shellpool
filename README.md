@@ -48,18 +48,19 @@ to command-line input from the user or for
 
 Lisps:
 
- - CCL: fully supported
- - SBCL: fully supported
- - CMUCL: basic running works, kill-tests fail (lacks multithreading)
- - Allegro: basic running works, kill-tests fail (reason unknown)
- - ABCL: basic running works, kill-tests fail (reason unknown)
- - Lispworks; doesn't work (strange errors, haven't debugged)
- - CLISP: doesn't work (run-program lacks stderr support)
+ - CCL:       fully supported, all tests pass
+ - SBCL:      fully supported, all tests pass
+ - CMUCL:     basic tests pass, killing cannot be tested (no multithreading)
+ - Allegro:   basic tests pass, kill tests hang/crash (unknown reason)
+ - ABCL:      basic tests pass, kill tests crash (crashes; unknown reason)
+ - Lispworks; basic tests pass, kill tests crash (unknown reason)
+ - CLISP:     not supported (run-program lacks stderr streams)
+ - ECL:       not supported (run-program lacks stderr streams)
 
 Operating Systems:
 
- - Linux: fully supported
- - BSD: killing doesn't work well yet
+ - Linux:     fully supported, all tests pass on CCL/SBCL
+ - BSD:       basic tests pass on CCL/SBCL, killing doesn't work well yet
 
 There is reasonably good [test suite](test/) that can be used to help ensure
 compatibility with your system.

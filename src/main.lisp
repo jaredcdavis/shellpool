@@ -168,6 +168,9 @@
          (bt-sem:signal-semaphore (state-sem *state*))))))
 
 (let ((found-bash))
+  ;; BOZO this probably isn't great.  It might be better to use whichever
+  ;; version of bash is newest, or whichever version is in the user's PATH, or
+  ;; ...?
   (defun find-bash ()
     (or found-bash
 	(let ((paths-to-try '("/bin/bash"
@@ -231,14 +234,20 @@
                         :stdout stdio
                         :stderr stderr))
 
+    #+abcl
+    (system:run-program bash nil :wait nil)
+
     ;; CLISP has a run-program command which looks mostly similar to that of
     ;; many of these other Lisps, but it doesn't seem to provide any stderr
     ;; handling, which makes it hard to handle with the current setup.  So, I
     ;; haven't tried to support it yet.  Maybe I could rework things so that
-    ;; the harness never prints anything to standard error, 
+    ;; the harness never prints anything to standard error,
 
-    #+abcl
-    (system:run-program bash nil :wait nil)))
+    ;; ECL also has a run-program command that seems to lack stderr handling,
+    ;; so again if we somehow rework things not to need stderr then we could
+    ;; perhaps get things working on it.
+
+    ))
 
 (defun bash-in (sh)
   #+ccl     (ccl:external-process-input-stream sh)
