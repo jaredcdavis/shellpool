@@ -64,21 +64,22 @@
    and return its stdout output as a string list."
   (msg "Starting ezrun.~%")
   (sleep 0.2)
-  (let* ((stdout nil)
-         (stderr nil)
-         (each-line (lambda (line type)
-                      (case type
-                        (:stdout (push line stdout))
-                        (:stderr (push line stderr))
-                        (otherwise (error "Bad type ~s for line ~s~%" type line)))))
-         (status (shellpool:run cmd :each-line each-line))
-         (stdout (nreverse stdout))
-         (stderr (nreverse stderr)))
-    (when stderr
-      (error "Error running ~s: Got lines on stderr: ~s" cmd stderr))
-    (when (not (equal status 0))
-      (error "Error running ~s: non-zero exit status ~s" cmd status))
-    stdout))
+  (let ((shellpool:*debug* nil))
+    (let* ((stdout nil)
+           (stderr nil)
+           (each-line (lambda (line type)
+                        (case type
+                          (:stdout (push line stdout))
+                          (:stderr (push line stderr))
+                          (otherwise (error "Bad type ~s for line ~s~%" type line)))))
+           (status (shellpool:run cmd :each-line each-line))
+           (stdout (nreverse stdout))
+           (stderr (nreverse stderr)))
+      (when stderr
+        (error "Error running ~s: Got lines on stderr: ~s" cmd stderr))
+      (when (not (equal status 0))
+        (error "Error running ~s: non-zero exit status ~s" cmd status))
+      stdout)))
 
 (defun list-processes ()
   "Try to get a list of all processes that are currently running.  Used in

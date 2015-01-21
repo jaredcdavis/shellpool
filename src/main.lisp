@@ -103,69 +103,8 @@
 
 
 
-
 ; ----------------------------------------------------------------------------
-; Shells
-
-(defstruct state
-
-  ;; LOCK is a lock that protects access to the state itself.  See the fields
-  ;; below for when the lock must be acquired.
-  (lock)
-
-  ;; AUX is a dedicated bash process that is used to:
-  ;;   - send kill signals to subsidiary processes to support interrupts,
-  ;;   - launch background commands using run-background
-  ;;
-  ;; Note that we only need a single AUX shell to be able to kill any number
-  ;; of running processes.  Similarly, since background processes are of a
-  ;; "fire and forget" nature, i.e., we invoke commands like "firefox &", we
-  ;; think a single background shell should suffice.
-  ;;
-  ;; Locking convention: the LOCK must be held while using the AUX shell.  We
-  ;; expect uses of AUX to take very little time (it just sends a "kill" signal
-  ;; to some other process or launches background programs), so we think a
-  ;; single process should suffice.
-  (aux)
-
-  ;; SEM is a semaphore that governs access to the RUNNERS.  Invariant: the
-  ;; count of the semaphore should always agree exactly with (LENGTH RUNNERS).
-  ;; See WITH-RUNNER, which properly waits for the next free runner.
-  (sem)
-
-  ;; RUNNERS are an ordinary list of bash processes that are available for
-  ;; running foreground shell commands with RUN.
-  (runners))
-
-(defparameter *state*
-  (make-state :lock       (bt:make-lock "shellpool state lock")
-              :aux        nil
-              :sem        (bt-sem:make-semaphore)
-              :runners    nil))
-
-(defmacro with-state-lock (&rest forms)
-  `(bt:with-lock-held ((state-lock *state*))
-                      . ,forms))
-
-(defmacro with-runner (name &rest forms)
-  `(let ((,name nil))
-     (unwind-protect
-         (progn
-           (unless (bt-sem:wait-on-semaphore (state-sem *state*))
-             (error "Failed to acquire runner"))
-           (with-state-lock
-             (unless (consp (state-runners *state*))
-               ;; Should never happen.  The number of free runners
-               ;; should always agree with the value of the
-               ;; semaphore.
-               (error "Our turn to go, but no runners are available?"))
-             (setq ,name (pop (state-runners *state*))))
-           ;; Got the runner, so use it to run stuff.
-           ,@forms)
-       ;; Clean up by putting the runner back.
-       (with-state-lock
-         (push ,name (state-runners *state*))
-         (bt-sem:signal-semaphore (state-sem *state*))))))
+; Glue
 
 (let ((found-bash))
   ;; BOZO this probably isn't great.  It might be better to use whichever
@@ -273,11 +212,115 @@
   #+abcl    (system:process-error sh)
   )
 
+(defun bash-alive-p (sh)
+  #+ccl       t ;; BOZO implement me
+  #+sbcl      (sb-ext:process-alive-p sh)
+  #+cmucl     t ;; BOZO implement me
+  #+allegro
+  (and (open-stream-p (bashprocess-stdin sh))
+       (open-stream-p (bashprocess-stdout sh))
+       (open-stream-p (bashprocess-stderr sh)))
+  #+lispworks t ;; BOZO implement me
+  #+abcl      (system:process-alive-p sh)
+  )
+
+
+; ----------------------------------------------------------------------------
+; State
+
+(defstruct runner
+  ;; A single runner thread.
+
+  ;; ERR is signaled only when the runner shell unexpectedly dies.  A runner
+  ;; that gets flagged with an ERR does not get added back into the state.
+  (err)
+
+  ;; SH is the main shell (a Lisp process or bashprocess object, depending on
+  ;; the lisp).
+  (sh))
+
+(defstruct state
+
+  ;; LOCK is a lock that protects access to the state itself.  See the fields
+  ;; below for when the lock must be acquired.
+  (lock)
+
+  ;; AUX is a dedicated bash process that is used to:
+  ;;   - send kill signals to subsidiary processes to support interrupts,
+  ;;   - launch background commands using run-background
+  ;;
+  ;; Note that we only need a single AUX shell to be able to kill any number
+  ;; of running processes.  Similarly, since background processes are of a
+  ;; "fire and forget" nature, i.e., we invoke commands like "firefox &", we
+  ;; think a single background shell should suffice.
+  ;;
+  ;; Locking convention: the LOCK must be held while using the AUX shell.  We
+  ;; expect uses of AUX to take very little time (it just sends a "kill" signal
+  ;; to some other process or launches background programs), so we think a
+  ;; single process should suffice.
+  (aux)
+
+  ;; SEM is a semaphore that governs access to the RUNNERS.  Invariant: the
+  ;; count of the semaphore should always agree exactly with (LENGTH RUNNERS).
+  ;; See WITH-RUNNER, which properly waits for the next free runner.
+  (sem)
+
+  ;; RUNNERS are an ordinary list of RUNNERs that are available for running
+  ;; foreground shell commands with RUN.  Invariant: Every runner is always OK,
+  ;; i.e., there are no runners marked with ERR.
+  (runners))
+
+(defparameter *state*
+  (make-state :lock       (bt:make-lock "shellpool state lock")
+              :aux        nil
+              :sem        (bt-sem:make-semaphore)
+              :runners    nil))
+
+(defmacro with-state-lock (&rest forms)
+  `(bt:with-lock-held ((state-lock *state*))
+                      . ,forms))
+
+(defmacro with-runner (name &rest forms)
+  `(let ((,name nil))
+     (unwind-protect
+         (progn
+           (unless (bt-sem:wait-on-semaphore (state-sem *state*))
+             (error "Failed to acquire runner"))
+           (with-state-lock
+             (unless (consp (state-runners *state*))
+               ;; Should never happen.  The number of free runners
+               ;; should always agree with the value of the
+               ;; semaphore.
+               (error "Our turn to go, but no runners are available?"))
+             (setq ,name (pop (state-runners *state*))))
+           (unless (bash-alive-p (runner-sh ,name))
+             (debug-msg "Shellpool: with-runner failing because bash is dead!~%")
+             (setf (runner-err ,name) t)
+             (error "Shellpool runner is dead."))
+           ,@forms)
+       ;; Clean up by putting the runner back.
+       (with-state-lock
+         (cond ((runner-err runner)
+                (debug-msg "Not reinstalling runner due to error.~%"))
+               (t
+                (push ,name (state-runners *state*))
+                (bt-sem:signal-semaphore (state-sem *state*))))))))
+
+(define-constant +exit-line+   "SHELLPOOL_EXIT")
+(define-constant +status-line+ "SHELLPOOL_STATUS")
+(define-constant +pid-line+    "SHELLPOOL_PID")
+(define-constant +death-line+  "SHELLPOOL_UNEXPECTED_DEATH")
+
 (defun add-runners (n)
   ;; Assumes the state lock is held.
   (let ((state *state*))
     (loop for i from 1 to n do
-          (push (make-bash) (state-runners state)))
+          (let* ((sh    (make-bash))
+                 (sh-in (bash-in sh)))
+            (format sh-in "trap \"echo ~s; echo ~s 1>&2; exit\" SIGHUP SIGINT SIGTERM~%"
+                    +death-line+ +death-line+)
+            (push (make-runner :err nil :sh sh)
+                  (state-runners state))))
     (bt-sem:signal-semaphore (state-sem state) n)))
 
 (defun start (&optional (n '1))
@@ -289,9 +332,6 @@
     nil))
 
 
-(define-constant +exit-line+   "SHELLPOOL_EXIT")
-(define-constant +status-line+ "SHELLPOOL_STATUS")
-(define-constant +pid-line+    "SHELLPOOL_PID")
 
 (defun parse-pid-line (line)
   ;; Given a line like SHELLPOOL_PID 1234, we return 1234.
@@ -309,6 +349,8 @@
   (with-state-lock
     (let* ((aux    (state-aux *state*))
            (aux-in (bash-in aux)))
+      (unless (bash-alive-p aux)
+        (error "Shellpool error: aux shell died?"))
 
 ; Wow, this is tricky.  Want to kill not only the process, but all processes
 ; that it spawns.  To do this:
@@ -322,7 +364,11 @@
       (format aux-in "PARENT=`ps -o pgrp ~s | tail -1`~%" pid)
       (format aux-in "NOT_PARENT=`pgrep -g $PARENT | grep -v $PARENT`~%")
       (format aux-in "kill -9 $NOT_PARENT~%")
-      (force-output aux-in))))
+      (force-output aux-in)
+
+;      (format aux-in "kill ~s~%" pid)
+;      (force-output aux-in)
+      )))
 
 (defun default-each-line (line type)
   (declare (type string line))
@@ -438,9 +484,10 @@
 
   (with-runner runner
     (debug-msg "Got with-runner~%")
-    (let* ((bash-in       (bash-in runner))
-           (bash-out      (bash-out runner))
-           (bash-err      (bash-err runner))
+    (let* ((sh            (runner-sh runner))
+           (bash-in       (bash-in sh))
+           (bash-out      (bash-out sh))
+           (bash-err      (bash-err sh))
            (pid           nil)
            (exit-status   nil)
            (line          nil)
@@ -490,6 +537,10 @@
                              (debug-msg "Exit status line: ~s~%" line)
                              (setq exit-status
                                    (parse-integer line :start (+ 1 (length +status-line+)))))
+                            ((equal line +death-line+)
+                             (debug-msg "Unexpected death line.  Signaling error.~%")
+                             (setf (runner-err runner) t)
+                             (error "Shellpool: Shell died unexpectedly!~%"))
                             (t
                              (error "Unexpected line ~s~%" line))))
 
@@ -503,40 +554,59 @@
                              (debug-msg "Exit line, done reading STDERR.~%")
                              (setq stderr-exit t)
                              (loop-finish))
+                            ((equal line +death-line+)
+                             (debug-msg "Unexpected death line.  Signaling error.~%")
+                             (setf (runner-err runner) t)
+                             (error "Shellpool: Shell died unexpectedly!~%"))
                             (t
                              (error "Unexpected line ~s~%" line)))))
 
             (progn
               ;; Cleanup in case of interrupts.
-              (when (not stdout-exit)
-                (debug-msg "Shutting down process ~s.~%" pid)
-                (kill pid)
+              (debug-msg "Shutting down process ~s.~%" pid)
+              (kill pid)
+              (debug-msg "Done shutting down ~s.~%" pid)
+              (debug-msg "Alive is: ~s~%" (bash-alive-p (runner-sh runner)))
+
+              (when (and (not stdout-exit)
+                         (not (runner-err runner)))
                 (loop do
                       (setq line (read-line bash-out))
-                      (when (strsuffixp +exit-line+ line)
-                        ;; We used to try to match +exit-line+ exactly, but
-                        ;; then we found that if we interrupt while the program has
-                        ;; printed partial output, we can end up with a situation
-                        ;; like:
-                        ;;     <partial output>HORRIBLE_STRING_TO_DETECT_WHATEVER
-                        ;; So now we are more permissive.  We don't try to capture
-                        ;; the <partial output> because we're just skipping these
-                        ;; lines anyway.
-                        (debug-msg "Recovery: Got EXIT on STDOUT.~%")
-                        (debug-msg "Stdout line: ~s, suffixp: ~s~%"
-                               line (strsuffixp +exit-line+ line))
-                        (loop-finish))
-                      (debug-msg "Recovery: Stdout: Skip ~s.~%" line)))
+                      (cond ((strsuffixp +exit-line+ line)
+                             ;; We used to try to match +exit-line+ exactly, but
+                             ;; then we found that if we interrupt while the program has
+                             ;; printed partial output, we can end up with a situation
+                             ;; like:
+                             ;;     <partial output>HORRIBLE_STRING_TO_DETECT_WHATEVER
+                             ;; So now we are more permissive.  We don't try to capture
+                             ;; the <partial output> because we're just skipping these
+                             ;; lines anyway.
+                             (debug-msg "Recovery: Got EXIT on STDOUT.~%")
+                             (debug-msg "Stdout line: ~s, suffixp: ~s~%"
+                                        line (strsuffixp +exit-line+ line))
+                             (loop-finish))
+                            ((equal line +death-line+)
+                             (debug-msg "Unexpected death line.  Signaling error.~%")
+                             (setf (runner-err runner) t)
+                             (loop-finish))
+                            (t
+                             (debug-msg "Recovery: Stdout: Skip ~s.~%" line)))))
 
-              (when (not stderr-exit)
+              (when (and (not stderr-exit)
+                         (not (runner-err runner)))
                 (loop do
                       (setq line (read-line bash-err))
-                      (when (strsuffixp +exit-line+ line)
-                        (debug-msg "Recovery: Got EXIT on STDERR.~%")
-                        (debug-msg "stderr line: ~s, suffixp: ~s~%"
-                               line (strsuffixp +exit-line+ line))
-                        (loop-finish))
-                      (debug-msg "Recovery: Stderr: Skip ~s.~%" line))))))
+                      (cond ((strsuffixp +exit-line+ line)
+                             (debug-msg "Recovery: Got EXIT on STDERR.~%")
+                             (debug-msg "stderr line: ~s, suffixp: ~s~%"
+                                        line (strsuffixp +exit-line+ line))
+                             (loop-finish))
+                            ((equal line +death-line+)
+                             (debug-msg "Unexpected death line.  Signaling error.~%")
+                             (setf (runner-err runner) t)
+                             (loop-finish))
+                            (t
+                             (debug-msg "Recovery: Stderr: Skip ~s.~%" line))))))))
 
         (debug-msg "RUN done.~%")
 

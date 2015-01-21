@@ -32,6 +32,8 @@
 
 ; kill.lisp -- tests of killing shellpool processes
 
+(setq shellpool:*debug* t)
+
 (let ((lock (bt:make-lock))  ;; Protects st
       (st   :start))         ;; Current state of our test, see below.
 
@@ -124,7 +126,7 @@
     (when (has-process subname)
       (error "Looks like ~s is running already, won't be able to test killing correctly."
              subname))
-    (let ((start-time (get-internal-run-time)))
+    (let ((start-time (get-internal-real-time)))
       (msg " - CHECKER: starting runner thread.~%")
       (bt:make-thread (lambda () (start-runner cmd ready-fn)))
       (msg " - CHECKER: waiting for :RUNNING~%")
@@ -155,7 +157,7 @@
       (msg " - CHECKER: Program seems sufficiently dead.~%")
       ;; Try to verify that all of the above happened very fast, i.e., we
       ;; didn't just sit around waiting for the command to exit.
-      (let* ((end-time (get-internal-run-time))
+      (let* ((end-time (get-internal-real-time))
              (elapsed  (coerce (- end-time start-time) 'float))
              (limit    (* max-time internal-time-units-per-second)))
         (msg " - Test passed in ~s seconds.~%" (/ elapsed internal-time-units-per-second))
