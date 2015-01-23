@@ -52,19 +52,19 @@ support for other Lisps or operating systems, or for adding additional test
 cases.  Current status:
 
 CCL:
-  - Linux: fully supported, all tests pass
+  - Linux: all tests pass
   - Windows: ??
   - Mac: ??
   - BSD: ??
 
 SBCL:
-  - Linux: fully supported, all tests pass
+  - Linux: all tests pass
   - Windows: ??
   - Mac: ??
   - FreeBSD: ??
 
 CMUCL:
-  - Linux: fully supported, all tests pass
+  - Linux: all tests pass
   - Windows: ??
   - Mac: ??
   - FreeBSD: ??
