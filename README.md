@@ -46,27 +46,50 @@ to command-line input from the user or for
 
 ## Portability
 
-Lisps:
-
- - CCL:       fully supported, all tests pass
- - SBCL:      fully supported, all tests pass
- - CMUCL:     basic tests pass, killing cannot be tested (no multithreading)
- - Allegro:   basic tests pass, kill tests hang/crash (unknown reason)
- - ABCL:      basic tests pass, kill tests crash (crashes; unknown reason)
- - Lispworks; basic tests pass, kill tests crash (unknown reason)
- - CLISP:     not supported (run-program lacks stderr streams)
- - ECL:       not supported (run-program lacks stderr streams)
-
-Operating Systems:
-
- - Linux:     fully supported, all tests pass on CCL/SBCL
- - BSD:       basic tests pass on CCL/SBCL, killing doesn't work well yet
-
 There is reasonably good [test suite](test/) that can be used to help ensure
-compatibility with your system.
+compatibility with your system.  I would welcome any patches that provide
+support for other Lisps or operating systems, or for adding additional test
+cases.  Current status:
 
-I would welcome any patches that provide support for other Lisps or operating
-systems.
+CCL:
+  - Linux: fully supported, all tests pass
+  - Windows: ??
+  - Mac: ??
+  - BSD: ??
+
+SBCL:
+  - Linux: fully supported, all tests pass
+  - Windows: ??
+  - Mac: ??
+  - FreeBSD: ??
+
+CMUCL:
+  - Linux: fully supported, all tests pass
+  - Windows: ??
+  - Mac: ??
+  - FreeBSD: ??
+
+Allegro:
+  - Linux: basic tests pass, kill tests crash (unknown reason)
+  - Windows: ??
+  - Mac: ??
+  - FreeBSD: ??
+
+ABCL:
+  - Linux: basic tests pass, kill tests crash (unknown reason)
+  - Windows: ??
+  - Mac: ??
+  - FreeBSD: ??
+
+Lispworks:
+  - Linux: basic tests pass but require `(bt:start-multiprocessing)`
+    to be invoked first.  Kill tests crash (unknown reason)
+  - Windows: ??
+  - Mac: ??
+  - FreeBSD: ??
+
+CLISP: doesn't work at all (`run-program` lacks `stderr` streams)
+ECL: doesn't work at all (`run-program` lacks `stderr` streams)
 
 
 ### Dependencies

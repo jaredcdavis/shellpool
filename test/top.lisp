@@ -35,7 +35,7 @@
 (ql:quickload "shellpool")
 (ql:quickload "uiop")
 
-#-cmucl
+#+lispworks
 (bt:start-multiprocessing)
 
 (shellpool:start)
