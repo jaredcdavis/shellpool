@@ -44,7 +44,7 @@
   `(when *debug*
      (format t "Shellpool: ")
      (format t ,@args)
-     (force-output)))
+     (finish-output)))
 
 (defmacro define-constant (name value &optional doc)
   `(defconstant ,name (if (boundp ',name) (symbol-value ',name) ,value)
@@ -364,7 +364,13 @@
       (format aux-in "PARENT=`ps -o pgrp ~s | tail -1`~%" pid)
       (format aux-in "NOT_PARENT=`pgrep -g $PARENT | grep -v $PARENT`~%")
       (format aux-in "kill -9 $NOT_PARENT~%")
-      (force-output aux-in)
+
+      ;; Use finish-output, not force-output, because we want to be very sure
+      ;; this gets run.
+      (finish-output aux-in)
+
+      (unless (bash-alive-p aux)
+        (error "Shellpool error: aux shell died?"))
 
 ;      (format aux-in "kill ~s~%" pid)
 ;      (force-output aux-in)
@@ -466,8 +472,15 @@
   ;; user's scripts.
   (concatenate 'string
                "set -o pipefail" nl
+
                "shellpool_add_plus() { local line; while read line; do echo \"+$line\"; done }" nl
                "shellpool_add_minus() { local line; while read line; do echo \"-$line\"; done }" nl
+
+               ;; TEMP DEBUGGING HACK
+               ;; "echo +INSIDE THE MAIN BASH SHELL, $$:" nl
+               ;; "pstree -s $$ -p | shellpool_add_plus" nl
+               ;; "ps -o 'pid=PID,pgrp=PGRP,comm=CMD' --pid $$ | shellpool_add_plus" nl
+
                "(((" (find-bash) " " filename
                " < /dev/null | shellpool_add_plus) 3>&1 1>&2 2>&3 | shellpool_add_minus) 2>&1"
                " ; printf \"\\n" +status-line+ " $?\\\n\" ) &" nl
@@ -498,6 +511,14 @@
                            (stream :template "shellpool-%.tmp")
 			   (write-string "#!" stream)
 			   (write-line bash stream)
+
+                           ;; ;; TEMP DEBUGGING HACK
+                           ;; (write-line "echo +INSIDE THE TEMP SHELL SCRIPT, $$:" stream)
+                           ;; (write-line "echo -n +" stream)
+                           ;; (write-line "pstree -s $$ -p" stream)
+                           ;; (write-line "shellpool_add_plus() { local line; while read line; do echo \"+$line\"; done }" stream)
+                           ;; (write-line "ps -o 'pid=PID,pgrp=PGRP,comm=CMD' --pid $$ | shellpool_add_plus" stream)
+
                            (write-line "trap \"kill -- -$BASHPID\" SIGINT SIGTERM" stream)
                            (write-line cmd stream))))
       (with-file-to-be-deleted tempfile
@@ -507,6 +528,8 @@
           (debug-msg "Temp path is ~s~%" (namestring tempfile))
           (debug-msg "<Bash Commands>~%~s~%</Bash Commands>~%" cmd)
 
+          ;; Use finish-output, not force-output, because we want to be very
+          ;; sure this gets run.
           (write-line cmd bash-in)
           (finish-output bash-in)
 
@@ -528,10 +551,10 @@
                              (setq stdout-exit t)
                              (loop-finish))
                             ((eql (char line 0) #\+)
-                             (debug-msg "Stdout line, invoking callback.~%")
+                             ;; (debug-msg "Stdout line, invoking callback.~%")
                              (funcall each-line (subseq line 1 nil) :stdout))
                             ((eql (char line 0) #\-)
-                             (debug-msg "Stderr line, invoking callback.~%")
+                             ;; (debug-msg "Stderr line, invoking callback.~%")
                              (funcall each-line (subseq line 1 nil) :stderr))
                             ((strprefixp +status-line+ line)
                              (debug-msg "Exit status line: ~s~%" line)

@@ -62,24 +62,21 @@
 (defun ezrun (cmd)
   "Run a program, ensure it exits with status 0 and prints nothing to stderr,
    and return its stdout output as a string list."
-  (msg "Starting ezrun.~%")
-  (sleep 0.2)
-  (let ((shellpool:*debug* nil))
-    (let* ((stdout nil)
-           (stderr nil)
-           (each-line (lambda (line type)
-                        (case type
-                          (:stdout (push line stdout))
-                          (:stderr (push line stderr))
-                          (otherwise (error "Bad type ~s for line ~s~%" type line)))))
-           (status (shellpool:run cmd :each-line each-line))
-           (stdout (nreverse stdout))
-           (stderr (nreverse stderr)))
-      (when stderr
-        (error "Error running ~s: Got lines on stderr: ~s" cmd stderr))
-      (when (not (equal status 0))
-        (error "Error running ~s: non-zero exit status ~s" cmd status))
-      stdout)))
+  (let* ((stdout nil)
+         (stderr nil)
+         (each-line (lambda (line type)
+                      (case type
+                        (:stdout (push line stdout))
+                        (:stderr (push line stderr))
+                        (otherwise (error "Bad type ~s for line ~s~%" type line)))))
+         (status (shellpool:run cmd :each-line each-line))
+         (stdout (nreverse stdout))
+         (stderr (nreverse stderr)))
+    (when stderr
+      (error "Error running ~s: Got lines on stderr: ~s" cmd stderr))
+    (when (not (equal status 0))
+      (error "Error running ~s: non-zero exit status ~s" cmd status))
+    stdout))
 
 (defun list-processes ()
   "Try to get a list of all processes that are currently running.  Used in
@@ -92,13 +89,15 @@
   (let ((all-processes (list-processes)))
     (loop for entry in all-processes do
           (when (shellpool::strpos name entry)
+            (format t "Has-process: found match for ~s: ~s~%" name entry)
             (return-from has-process t)))
+    (format t "Has-process: no matches for ~s.~%" name)
     nil))
 
 (msg "Testing out has-process.~%")
 (sleep 0.2)
 
-(setq shellpool:*debug* t)
+;(setq shellpool:*debug* t)
 
 (unless (has-process "bash")
   (error "Doesn't seem like has-process is working right: no bash shells are running."))

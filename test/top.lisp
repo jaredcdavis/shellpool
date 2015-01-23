@@ -34,6 +34,8 @@
 
 (ql:quickload "shellpool")
 (ql:quickload "uiop")
+
+#-cmucl
 (bt:start-multiprocessing)
 
 (shellpool:start)
@@ -44,7 +46,6 @@
   (format t "~% -------- Doing basic tests -------------- ~%")
   (load "basic.lisp"))
 
-#-cmucl ;; Lacks threads, can't do multithreaded tests
 (progn
   (format t "~% -------- Doing kill tests --------------- ~%")
   (load "kill.lisp"))
