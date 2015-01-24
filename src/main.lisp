@@ -176,16 +176,13 @@
     #+abcl
     (system:run-program bash nil :wait nil)
 
-    ;; CLISP has a run-program command which looks mostly similar to that of
-    ;; many of these other Lisps, but it doesn't seem to provide any stderr
-    ;; handling, which makes it hard to handle with the current setup.  So, I
-    ;; haven't tried to support it yet.  Maybe I could rework things so that
-    ;; the harness never prints anything to standard error,
-
-    ;; ECL also has a run-program command that seems to lack stderr handling,
-    ;; so again if we somehow rework things not to need stderr then we could
-    ;; perhaps get things working on it.
-
+    ;; CLISP and ECL each have run-program commands, which look mostly similar
+    ;; to that of many of these other Lisps, but they don't seem to provide any
+    ;; stderr handling, so our current code won't work with them.
+    ;;
+    ;; It might be possible to rework things so that we don't rely on stderr,
+    ;; but this would especially make PID detection trickier, see the notes
+    ;; below where we create the temporary file.
     ))
 
 (defun bash-in (sh)
@@ -256,8 +253,7 @@
   ;;
   ;; Locking convention: the LOCK must be held while using the AUX shell.  We
   ;; expect uses of AUX to take very little time (it just sends a "kill" signal
-  ;; to some other process or launches background programs), so we think a
-  ;; single process should suffice.
+  ;; to some other process or launches background programs).
   (aux)
 
   ;; SEM is a semaphore that governs access to the RUNNERS.  Invariant: the
@@ -311,21 +307,19 @@
 (define-constant +pid-line+    "SHELLPOOL_PID")
 (define-constant +death-line+  "SHELLPOOL_UNEXPECTED_DEATH")
 
-(defun add-runners (n)
-  ;; Assumes the state lock is held.
-  (let ((state *state*))
-    (loop for i from 1 to n do
-          (let* ((sh    (make-bash))
-                 (sh-in (bash-in sh)))
-            (format sh-in "trap \"echo ~s; echo ~s 1>&2; exit\" SIGHUP SIGINT SIGTERM~%"
-                    +death-line+ +death-line+)
-            (push (make-runner :err nil :sh sh)
-                  (state-runners state))))
-    (bt-sem:signal-semaphore (state-sem state) n)))
-
-#+freebsd
 (define-constant +allkids+
-  ;; Bash script to recursively collect the children of a process on FreeBSD.
+  ;; Bash script to recursively collect the children of a process.
+  ;;  - Works on Linux and FreeBSD at least.
+  ;;  - May need to be modified to work on Mac/Windows/etc.
+  ;;
+  ;; If you need to port this to some other OS, some useful commands
+  ;; that we used when developing it on FreeBSD/Linux were:
+  ;;
+  ;;   $ ./sleepN.sh 1234 4 > foo.out &
+  ;;        - creates some perl processes under our shell for 1234 seconds
+  ;;   $ ps ax -o pid,gid,ppid,pgid,command
+  ;;        - lets us see their PIDs, etc.
+  ;;   $ ... hack together an allkids function and test it on $$ ...
   "function allkids() {
      echo $1
      local children=`pgrep -P $1`
@@ -340,10 +334,28 @@
      fi
   }")
 
-#-freebsd
-(defconstant +allkids+ "BOZO")
+(defun add-runners (n)
+  ;; Assumes the state lock is held.
+  (let ((state *state*))
+    (loop for i from 1 to n do
+          (let* ((sh    (make-bash))
+                 (sh-in (bash-in sh)))
+            (format sh-in "trap \"echo ~s; echo ~s 1>&2; exit\" SIGHUP SIGINT SIGTERM~%"
+                    +death-line+ +death-line+)
+            (push (make-runner :err nil :sh sh)
+                  (state-runners state))))
+    (bt-sem:signal-semaphore (state-sem state) n)))
+
+(defparameter *max-shells* 1000
+  "Purely a safety valve.  We'll cause an error if you try to start more than
+   this many shells at once, since that would probably cause problems on your
+   system.  We make this a parameter so you can reconfigure it if you really
+   need to create so many shells.")
 
 (defun start (&optional (n '1))
+  "Start some number of shells and ensure that the aux shell is running."
+  (when (>= n *max-shells*)
+    (error "Starting ~s shells would be insane." n))
   (with-state-lock
     (unless (state-aux *state*)
       (debug-msg "START: starting aux shell~%")
@@ -353,7 +365,6 @@
         (setf (state-aux *state*) aux)))
     (add-runners n)
     nil))
-
 
 (defun parse-pid-line (line)
   ;; Given a line like SHELLPOOL_PID 1234, we return 1234.
@@ -374,25 +385,13 @@
       (unless (bash-alive-p aux)
         (error "Shellpool error: aux shell died?"))
 
-      #+linux
-      (progn
-        ;; Wow, this is tricky.  Want to kill not only the process, but all processes
-        ;; that it spawns.  To do this:
-        ;;   1. First look up the process's parent, i.e., the bash that is running
-        ;;      inside of the runner
-        ;;   2. Find all processes with runner as their parent, removing runner itself
-        ;;   3. Kill everything found in 2.
-        (format aux-in "PARENT=`ps -o pgrp ~s | tail -1`~%" pid)
-        (format aux-in "NOT_PARENT=`pgrep -g $PARENT | grep -v $PARENT`~%")
-        (format aux-in "kill -9 $NOT_PARENT~%"))
+      ;; Killing is a bit trickier than just sending a kill signal to the
+      ;; target PID, because the PID can spawn children.  See +allkids+ above.
+      ;; We arrange so that the aux shell starts with the allkids function
+      ;; defined.  We can then be sure to kill all the children that your
+      ;; process has created.
 
-      #+freebsd
-      (progn
-        ;; Some useful commands when looking at FreeBSD processes.
-        ;;   $ ./sleepN.sh 1234 4 > foo.out &
-        ;;   $ ps ax -o pid,gid,ppid,pgid,command
-        (format aux-in "kill -9 $(allkids ~s)~%" pid))
-
+      (format aux-in "kill -9 $(allkids ~s)~%" pid)
       ;; Use finish-output, not force-output, because we want to be very sure
       ;; this gets run.
       (finish-output aux-in)
@@ -501,20 +500,6 @@
 
                "shellpool_add_plus() { local line; while read line; do echo \"+$line\"; done }" nl
                "shellpool_add_minus() { local line; while read line; do echo \"-$line\"; done }" nl
-
-               #+linux ;; TEMP DEBUGGING HACK
-               (progn
-                 ;; "echo +INSIDE THE MAIN BASH SHELL, $$:" nl
-                 ;; "pstree -s $$ -p | shellpool_add_plus" nl
-                 ;; "ps -o 'pid=PID,pgrp=PGRP,comm=CMD' --pid $$ | shellpool_add_plus" nl
-                 )
-
-               #+freebsd ;; Temp debugging hack
-               (progn
-                 ;;"echo +INSIDE THE MAIN BASH SHELL, $$:" nl
-                 ;;"ps -p $$ -o ppid,pgid,command | shellpool_add_plus" nl
-                 )
-
                "(((bash " filename
                " < /dev/null | shellpool_add_plus) 3>&1 1>&2 2>&3 | shellpool_add_minus) 2>&1"
                " ; printf \"\\n" +status-line+ " $?\\\n\" ) &" nl
@@ -557,23 +542,6 @@
              ;;    PID line.  To avoid this, we do the PID capture outside the
              ;;    command on STDERR, which the user's command has no way to
              ;;    influence.
-
-             #+linux ;; TEMP DEBUGGING HACK
-             (progn
-               ;; (write-line "echo +INSIDE THE TEMP SHELL SCRIPT, $$:" stream)
-               ;; (write-line "echo -n +" stream)
-               ;; (write-line "pstree -s $$ -p" stream)
-               ;; (write-line "shellpool_add_plus() { local line; while read line; do echo \"+$line\"; done }" stream)
-               ;; (write-line "ps -o 'pid=PID,pgrp=PGRP,comm=CMD' --pid $$ | shellpool_add_plus" stream)
-               )
-
-             #+freebsd ;; TEMP DEBUGGING HACK
-             (progn
-               ;;(write-line "echo +INSIDE THE TEMP SHELL SCRIPT, $$:" stream)
-               ;;(write-line "shellpool_add_plus() { local line; while read line; do echo \"+$line\"; done }" stream)
-               ;;(write-line "ps -p $$ -o ppid,pgid,command | shellpool_add_plus" stream)
-               )
-
              (write-line "trap \"kill -- -$BASHPID\" SIGINT SIGTERM" stream)
              (write-line cmd stream))))
       (with-file-to-be-deleted tempfile

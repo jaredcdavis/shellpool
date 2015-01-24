@@ -1,7 +1,5 @@
 ## Extremely preliminary, not ready for public consumption
 
-# BOZO note completely broken right now -- Got BSD killing working but ruined Linux. :)
-
 Shellpool
 =========
 
@@ -62,11 +60,7 @@ CCL:
 SBCL:
 
   - Linux: all tests pass
-
-  - FreeBSD: basic tests pass, kill tests (interrupts) don't work
-
-    (Note: compile SBCL with --with-sb-thread)
-
+  - FreeBSD: all tests pass (Note: compile SBCL with --with-sb-thread)
   - Windows: ??
   - Mac: ??
 
@@ -76,25 +70,23 @@ CMUCL:
   - Windows: ??
   - Mac: ??
 
-Allegro:
-  - Linux: basic tests pass, kill tests crash (unknown reason)
-  - Windows: ??
-  - Mac: ??
-  - FreeBSD: ??
-
 ABCL:
-  - Linux: basic tests pass, kill tests crash (unknown reason)
+  - Linux: all tests pass
   - FreeBSD: all tests pass
   - Windows: ??
   - Mac: ??
 
-
-Lispworks:
-  - Linux: basic tests pass but require `(bt:start-multiprocessing)`
-    to be invoked first.  Kill tests crash (unknown reason)
+Allegro:
+  - Linux: all tests pass
+  - FreeBSD: ??
   - Windows: ??
   - Mac: ??
+
+Lispworks:
+  - Linux: all tests pass (Note: run `(bt:start-multiprocessing)` first!)
   - FreeBSD: ??
+  - Windows: ??
+  - Mac: ??
 
 CLISP: doesn't work at all (`run-program` lacks `stderr` streams)
 

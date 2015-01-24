@@ -40,6 +40,9 @@
 #+(or mswindows windows win32)
 (error "~%~%Error: Shellpool has not yet been ported to Windows; patches welcome.~%~%")
 
+#+(and sbcl (not sb-thread))
+(error "~%~%Error: Shellpool requires an SBCL compiled with --with-sb-thread.~%~%")
+
 (defsystem "shellpool"
   :description "Interface from Common Lisp to External Programs"
   :version "0.0.1"
