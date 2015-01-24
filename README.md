@@ -55,19 +55,24 @@ cases.  Current status:
 
 CCL:
   - Linux: all tests pass
-  - FreeBSD: basic tests pass, kill tests (interrupts) don't work
+  - FreeBSD: all tests pass
   - Windows: ??
   - Mac: ??
 
 SBCL:
+
   - Linux: all tests pass
+
   - FreeBSD: basic tests pass, kill tests (interrupts) don't work
+
+    (Note: compile SBCL with --with-sb-thread)
+
   - Windows: ??
   - Mac: ??
 
 CMUCL:
   - Linux: all tests pass
-  - FreeBSD: basic tests pass, kill tests (interrupts) don't work
+  - FreeBSD: all tests pass
   - Windows: ??
   - Mac: ??
 
@@ -79,9 +84,10 @@ Allegro:
 
 ABCL:
   - Linux: basic tests pass, kill tests crash (unknown reason)
+  - FreeBSD: all tests pass
   - Windows: ??
   - Mac: ??
-  - FreeBSD: ??
+
 
 Lispworks:
   - Linux: basic tests pass but require `(bt:start-multiprocessing)`

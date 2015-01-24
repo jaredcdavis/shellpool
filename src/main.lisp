@@ -358,7 +358,7 @@
 (defun parse-pid-line (line)
   ;; Given a line like SHELLPOOL_PID 1234, we return 1234.
   (debug-msg "Parsing PID line: ~s~%" line)
-  (unless (strprefixp (concatenate 'string "+" +pid-line+) line)
+  (unless (strprefixp +pid-line+ line)
     (error "Shellpool error: bad pid line: ~s." line))
   (multiple-value-bind (val pos)
       (parse-integer (subseq line (+ 1 (length +pid-line+))))
@@ -518,7 +518,7 @@
                "(((bash " filename
                " < /dev/null | shellpool_add_plus) 3>&1 1>&2 2>&3 | shellpool_add_minus) 2>&1"
                " ; printf \"\\n" +status-line+ " $?\\\n\" ) &" nl
-               ;;"echo " +pid-line+ " $! 1>&2" nl
+               "echo " +pid-line+ " $! 1>&2" nl
                "wait" nl
                "echo " +exit-line+ nl
                "echo " +exit-line+ " 1>&2" nl))
@@ -540,42 +540,42 @@
            (line          nil)
            (stdout-exit   nil)
            (stderr-exit   nil)
-	   (bash          (find-bash))
-           (tempfile      (cl-fad:with-output-to-temporary-file
-                           (stream :template "shellpool-%.tmp")
-                           ;; Notes:
-                           ;;
-                           ;;  - We don't need a shebang line if we invoke it
-                           ;;    with 'bash tempfile' and that way we avoid
-                           ;;    needing to do any chmod'ing as well.
-                           ;;
-                           ;;  - I originally tried to put the PID capture
-                           ;;    outside of the shell script, but that didn't
-                           ;;    work so well because I ended up capturing the
-                           ;;    PID of the superior wrapper things.  So, now,
-                           ;;    have the script itself print the PID.  It
-                           ;;    comes out with an extra + on it, but that's
-                           ;;    fine.
-                           (format stream "echo ~s $$~%" +pid-line+)
+           (tempfile
+            (cl-fad:with-output-to-temporary-file
+             (stream :template "shellpool-%.tmp")
+             ;; Notes:
+             ;;
+             ;;  - We don't need a #!/???/bash line.  We will invoke the script
+             ;;    with "bash tempfile" instead.  This avoids needing chmod and
+             ;;    avoids needing to know where bash lives.
+             ;;
+             ;;  - I once tried to put the printing of the PID line here, but
+             ;;    that didn't work so well because the stdout+stderr output
+             ;;    from this temporary script gets interleaved in an
+             ;;    unpredictable way, so if the user's command immediately
+             ;;    prints a message, then it can come first, before even our
+             ;;    PID line.  To avoid this, we do the PID capture outside the
+             ;;    command on STDERR, which the user's command has no way to
+             ;;    influence.
 
-                           #+linux ;; TEMP DEBUGGING HACK
-                           (progn
-                             ;; (write-line "echo +INSIDE THE TEMP SHELL SCRIPT, $$:" stream)
-                             ;; (write-line "echo -n +" stream)
-                             ;; (write-line "pstree -s $$ -p" stream)
-                             ;; (write-line "shellpool_add_plus() { local line; while read line; do echo \"+$line\"; done }" stream)
-                             ;; (write-line "ps -o 'pid=PID,pgrp=PGRP,comm=CMD' --pid $$ | shellpool_add_plus" stream)
-                             )
+             #+linux ;; TEMP DEBUGGING HACK
+             (progn
+               ;; (write-line "echo +INSIDE THE TEMP SHELL SCRIPT, $$:" stream)
+               ;; (write-line "echo -n +" stream)
+               ;; (write-line "pstree -s $$ -p" stream)
+               ;; (write-line "shellpool_add_plus() { local line; while read line; do echo \"+$line\"; done }" stream)
+               ;; (write-line "ps -o 'pid=PID,pgrp=PGRP,comm=CMD' --pid $$ | shellpool_add_plus" stream)
+               )
 
-                           #+freebsd ;; TEMP DEBUGGING HACK
-                           (progn
-                             ;;(write-line "echo +INSIDE THE TEMP SHELL SCRIPT, $$:" stream)
-                             ;;(write-line "shellpool_add_plus() { local line; while read line; do echo \"+$line\"; done }" stream)
-                             ;;(write-line "ps -p $$ -o ppid,pgid,command | shellpool_add_plus" stream)
-                             )
+             #+freebsd ;; TEMP DEBUGGING HACK
+             (progn
+               ;;(write-line "echo +INSIDE THE TEMP SHELL SCRIPT, $$:" stream)
+               ;;(write-line "shellpool_add_plus() { local line; while read line; do echo \"+$line\"; done }" stream)
+               ;;(write-line "ps -p $$ -o ppid,pgid,command | shellpool_add_plus" stream)
+               )
 
-                           (write-line "trap \"kill -- -$BASHPID\" SIGINT SIGTERM" stream)
-                           (write-line cmd stream))))
+             (write-line "trap \"kill -- -$BASHPID\" SIGINT SIGTERM" stream)
+             (write-line cmd stream))))
       (with-file-to-be-deleted tempfile
 
         (let ((cmd (make-run-command-string (namestring tempfile))))
@@ -583,12 +583,19 @@
           (debug-msg "Temp path is ~s~%" (namestring tempfile))
           (debug-msg "<Bash Commands>~%~s~%</Bash Commands>~%" cmd)
 
+          (write-line "echo ping" bash-in)
+          (finish-output bash-in)
+          (let ((line (read-line bash-out)))
+            (unless (equal line "ping")
+              (setf (runner-err runner) t)
+              (error "Shellpool: Shell is corrupted: ~s~%" line)))
+
           ;; Use finish-output, not force-output, because we want to be very
           ;; sure this gets run.
           (write-line cmd bash-in)
           (finish-output bash-in)
 
-          (setq pid (parse-pid-line (read-line bash-out)))
+          (setq pid (parse-pid-line (read-line bash-err)))
 
           (debug-msg "PID is ~s.~%" pid)
 
@@ -606,10 +613,10 @@
                              (setq stdout-exit t)
                              (loop-finish))
                             ((eql (char line 0) #\+)
-                             ;; (debug-msg "Stdout line, invoking callback.~%")
+                             (debug-msg "Stdout line, invoking callback.~%")
                              (funcall each-line (subseq line 1 nil) :stdout))
                             ((eql (char line 0) #\-)
-                             ;; (debug-msg "Stderr line, invoking callback.~%")
+                             (debug-msg "Stderr line, invoking callback.~%")
                              (funcall each-line (subseq line 1 nil) :stderr))
                             ((strprefixp +status-line+ line)
                              (debug-msg "Exit status line: ~s~%" line)
