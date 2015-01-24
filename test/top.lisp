@@ -35,6 +35,8 @@
 (ql:quickload "shellpool")
 (ql:quickload "uiop")
 
+(format t "Features are ~s~%" *features*)
+
 #+lispworks
 (bt:start-multiprocessing)
 
@@ -45,6 +47,8 @@
 (progn
   (format t "~% -------- Doing basic tests -------------- ~%")
   (load "basic.lisp"))
+
+(setq shellpool:*debug* t)
 
 (progn
   (format t "~% -------- Doing kill tests --------------- ~%")

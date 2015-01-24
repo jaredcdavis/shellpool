@@ -45,7 +45,8 @@
   :version "0.0.1"
   :author "Kookamara LLC"
   :license "MIT"
-  :depends-on (:cl-fad
+  :depends-on (:trivial-features
+               :cl-fad
                :bordeaux-threads
                :bt-semaphore
                )

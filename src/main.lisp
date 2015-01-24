@@ -323,20 +323,42 @@
                   (state-runners state))))
     (bt-sem:signal-semaphore (state-sem state) n)))
 
+#+freebsd
+(define-constant +allkids+
+  ;; Bash script to recursively collect the children of a process on FreeBSD.
+  "function allkids() {
+     echo $1
+     local children=`pgrep -P $1`
+     if [ -z \"$children\" ]
+     then
+         return;
+     else
+         for child in $children
+         do
+             allkids $child
+         done
+     fi
+  }")
+
+#-freebsd
+(defconstant +allkids+ "BOZO")
+
 (defun start (&optional (n '1))
   (with-state-lock
     (unless (state-aux *state*)
       (debug-msg "START: starting aux shell~%")
-      (setf (state-aux *state*) (make-bash)))
+      (let* ((aux    (make-bash))
+             (aux-in (bash-in aux)))
+        (write-line +allkids+ aux-in)
+        (setf (state-aux *state*) aux)))
     (add-runners n)
     nil))
-
 
 
 (defun parse-pid-line (line)
   ;; Given a line like SHELLPOOL_PID 1234, we return 1234.
   (debug-msg "Parsing PID line: ~s~%" line)
-  (unless (strprefixp +pid-line+ line)
+  (unless (strprefixp (concatenate 'string "+" +pid-line+) line)
     (error "Shellpool error: bad pid line: ~s." line))
   (multiple-value-bind (val pos)
       (parse-integer (subseq line (+ 1 (length +pid-line+))))
@@ -352,18 +374,24 @@
       (unless (bash-alive-p aux)
         (error "Shellpool error: aux shell died?"))
 
-; Wow, this is tricky.  Want to kill not only the process, but all processes
-; that it spawns.  To do this:
-;   1. First look up the process's parent, i.e., the bash that is running
-;      inside of the runner
-;   2. Find all processes with runner as their parent, removing runner itself
-;   3. Kill everything found in 2.
+      #+linux
+      (progn
+        ;; Wow, this is tricky.  Want to kill not only the process, but all processes
+        ;; that it spawns.  To do this:
+        ;;   1. First look up the process's parent, i.e., the bash that is running
+        ;;      inside of the runner
+        ;;   2. Find all processes with runner as their parent, removing runner itself
+        ;;   3. Kill everything found in 2.
+        (format aux-in "PARENT=`ps -o pgrp ~s | tail -1`~%" pid)
+        (format aux-in "NOT_PARENT=`pgrep -g $PARENT | grep -v $PARENT`~%")
+        (format aux-in "kill -9 $NOT_PARENT~%"))
 
-; BOZO this may all be different now that we have a subshell running our stuff.
-
-      (format aux-in "PARENT=`ps -o pgrp ~s | tail -1`~%" pid)
-      (format aux-in "NOT_PARENT=`pgrep -g $PARENT | grep -v $PARENT`~%")
-      (format aux-in "kill -9 $NOT_PARENT~%")
+      #+freebsd
+      (progn
+        ;; Some useful commands when looking at FreeBSD processes.
+        ;;   $ ./sleepN.sh 1234 4 > foo.out &
+        ;;   $ ps ax -o pid,gid,ppid,pgid,command
+        (format aux-in "kill -9 $(allkids ~s)~%" pid))
 
       ;; Use finish-output, not force-output, because we want to be very sure
       ;; this gets run.
@@ -372,8 +400,6 @@
       (unless (bash-alive-p aux)
         (error "Shellpool error: aux shell died?"))
 
-;      (format aux-in "kill ~s~%" pid)
-;      (force-output aux-in)
       )))
 
 (defun default-each-line (line type)
@@ -476,15 +502,23 @@
                "shellpool_add_plus() { local line; while read line; do echo \"+$line\"; done }" nl
                "shellpool_add_minus() { local line; while read line; do echo \"-$line\"; done }" nl
 
-               ;; TEMP DEBUGGING HACK
-               ;; "echo +INSIDE THE MAIN BASH SHELL, $$:" nl
-               ;; "pstree -s $$ -p | shellpool_add_plus" nl
-               ;; "ps -o 'pid=PID,pgrp=PGRP,comm=CMD' --pid $$ | shellpool_add_plus" nl
+               #+linux ;; TEMP DEBUGGING HACK
+               (progn
+                 ;; "echo +INSIDE THE MAIN BASH SHELL, $$:" nl
+                 ;; "pstree -s $$ -p | shellpool_add_plus" nl
+                 ;; "ps -o 'pid=PID,pgrp=PGRP,comm=CMD' --pid $$ | shellpool_add_plus" nl
+                 )
 
-               "(((" (find-bash) " " filename
+               #+freebsd ;; Temp debugging hack
+               (progn
+                 ;;"echo +INSIDE THE MAIN BASH SHELL, $$:" nl
+                 ;;"ps -p $$ -o ppid,pgid,command | shellpool_add_plus" nl
+                 )
+
+               "(((bash " filename
                " < /dev/null | shellpool_add_plus) 3>&1 1>&2 2>&3 | shellpool_add_minus) 2>&1"
                " ; printf \"\\n" +status-line+ " $?\\\n\" ) &" nl
-               "echo " +pid-line+ " $! 1>&2" nl
+               ;;"echo " +pid-line+ " $! 1>&2" nl
                "wait" nl
                "echo " +exit-line+ nl
                "echo " +exit-line+ " 1>&2" nl))
@@ -509,15 +543,36 @@
 	   (bash          (find-bash))
            (tempfile      (cl-fad:with-output-to-temporary-file
                            (stream :template "shellpool-%.tmp")
-			   (write-string "#!" stream)
-			   (write-line bash stream)
+                           ;; Notes:
+                           ;;
+                           ;;  - We don't need a shebang line if we invoke it
+                           ;;    with 'bash tempfile' and that way we avoid
+                           ;;    needing to do any chmod'ing as well.
+                           ;;
+                           ;;  - I originally tried to put the PID capture
+                           ;;    outside of the shell script, but that didn't
+                           ;;    work so well because I ended up capturing the
+                           ;;    PID of the superior wrapper things.  So, now,
+                           ;;    have the script itself print the PID.  It
+                           ;;    comes out with an extra + on it, but that's
+                           ;;    fine.
+                           (format stream "echo ~s $$~%" +pid-line+)
 
-                           ;; ;; TEMP DEBUGGING HACK
-                           ;; (write-line "echo +INSIDE THE TEMP SHELL SCRIPT, $$:" stream)
-                           ;; (write-line "echo -n +" stream)
-                           ;; (write-line "pstree -s $$ -p" stream)
-                           ;; (write-line "shellpool_add_plus() { local line; while read line; do echo \"+$line\"; done }" stream)
-                           ;; (write-line "ps -o 'pid=PID,pgrp=PGRP,comm=CMD' --pid $$ | shellpool_add_plus" stream)
+                           #+linux ;; TEMP DEBUGGING HACK
+                           (progn
+                             ;; (write-line "echo +INSIDE THE TEMP SHELL SCRIPT, $$:" stream)
+                             ;; (write-line "echo -n +" stream)
+                             ;; (write-line "pstree -s $$ -p" stream)
+                             ;; (write-line "shellpool_add_plus() { local line; while read line; do echo \"+$line\"; done }" stream)
+                             ;; (write-line "ps -o 'pid=PID,pgrp=PGRP,comm=CMD' --pid $$ | shellpool_add_plus" stream)
+                             )
+
+                           #+freebsd ;; TEMP DEBUGGING HACK
+                           (progn
+                             ;;(write-line "echo +INSIDE THE TEMP SHELL SCRIPT, $$:" stream)
+                             ;;(write-line "shellpool_add_plus() { local line; while read line; do echo \"+$line\"; done }" stream)
+                             ;;(write-line "ps -p $$ -o ppid,pgid,command | shellpool_add_plus" stream)
+                             )
 
                            (write-line "trap \"kill -- -$BASHPID\" SIGINT SIGTERM" stream)
                            (write-line cmd stream))))
@@ -533,7 +588,7 @@
           (write-line cmd bash-in)
           (finish-output bash-in)
 
-          (setq pid (parse-pid-line (read-line bash-err)))
+          (setq pid (parse-pid-line (read-line bash-out)))
 
           (debug-msg "PID is ~s.~%" pid)
 
@@ -586,10 +641,13 @@
 
             (progn
               ;; Cleanup in case of interrupts.
-              (debug-msg "Shutting down process ~s.~%" pid)
-              (kill pid)
-              (debug-msg "Done shutting down ~s.~%" pid)
-              (debug-msg "Alive is: ~s~%" (bash-alive-p (runner-sh runner)))
+              (unless (and stdout-exit stderr-exit)
+                (debug-msg "Shutting down process ~s.~%" pid)
+                (kill pid)
+                (debug-msg "Done shutting down ~s.~%" pid))
+
+              (debug-msg "In unwind-protect, alive is: ~s~%"
+                         (bash-alive-p (runner-sh runner)))
 
               (when (and (not stdout-exit)
                          (not (runner-err runner)))

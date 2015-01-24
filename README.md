@@ -1,5 +1,7 @@
 ## Extremely preliminary, not ready for public consumption
 
+# BOZO note completely broken right now -- Got BSD killing working but ruined Linux. :)
+
 Shellpool
 =========
 
@@ -53,21 +55,21 @@ cases.  Current status:
 
 CCL:
   - Linux: all tests pass
+  - FreeBSD: basic tests pass, kill tests (interrupts) don't work
   - Windows: ??
   - Mac: ??
-  - BSD: ??
 
 SBCL:
   - Linux: all tests pass
+  - FreeBSD: basic tests pass, kill tests (interrupts) don't work
   - Windows: ??
   - Mac: ??
-  - FreeBSD: ??
 
 CMUCL:
   - Linux: all tests pass
+  - FreeBSD: basic tests pass, kill tests (interrupts) don't work
   - Windows: ??
   - Mac: ??
-  - FreeBSD: ??
 
 Allegro:
   - Linux: basic tests pass, kill tests crash (unknown reason)
@@ -97,6 +99,7 @@ ECL: doesn't work at all (`run-program` lacks `stderr` streams)
 
 Lisp Libraries:
 
+  - [trivial-features](http://www.cliki.net/trivial-features) for identifying OS
   - [cl-fad](http://weitz.de/cl-fad/) for handling temporary files
   - [bordeaux-threads](http://common-lisp.net/project/bordeaux-threads/) for multithreading
   - [bt-semaphore](https://github.com/rmoritz/bt-semaphore) for semaphores

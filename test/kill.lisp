@@ -104,7 +104,7 @@
                           (shellpool:run cmd :each-line each-line)))))
     (unless (eq result *my-interrupt*)
       (error "Command exited with result ~s instead of an interrupt." result))
-    (sleep .2)
+    (sleep .5)
     (when (has-process subname)
       (error "Doesn't seem like ~s got killed." subname))
     (format t " - Program seems sufficiently dead.~%")
@@ -126,50 +126,54 @@
 ;; few times to try to make sure our killing stuff works more than once.
 (loop for i from 1 to 5 do
       (format t "*** Starting basic sleep test ~s.~%" i)
-      (do-test :cmd "./sleep.pl 10"
+      (do-test :cmd "./sleep.pl 15"
                :subname "sleep.pl"
                :ready-fn (lambda (line)
-                           (format t " --- Got line: ~s~%" line)
-                           t)
-               :max-time 3))
+                           (if (equal line "Sleeping for 15 more seconds.")
+                               (progn
+                                 (format t " --- Ready to kill.~%")
+                                 t)
+                             nil))
+               :max-time 5))
 
 ;; Check of whether we can kill subprocesses that our command launches.
 (loop for i from 1 to 5 do
       (format t "*** Starting sleepN test ~s.~%" i)
-      (do-test :cmd "./sleepN.sh 10 5"
+      (do-test :cmd "./sleepN.sh 15 5"
                :subname "sleep.pl"
                :ready-fn (lambda (line)
-                           (format t " --- Got line: ~s~%" line)
                            (if (equal line "Waiting for sleep.pl processes to finish.")
                                (progn
                                 (format t " --- Ready to kill.~%")
                                 t)
                              nil))
-               :max-time 3))
+               :max-time 5))
 
 ;; Check whether we can kill off a "bad" process that ignores various kill signals.
 (loop for i from 1 to 5 do
       (format t "*** Starting badsleep test ~s.~%" i)
-      (do-test :cmd "./badsleep.pl 10"
+      (do-test :cmd "./badsleep.pl 15"
                :subname "badsleep.pl"
                :ready-fn (lambda (line)
-                           (format t " --- Got line: ~s~%" line)
-                           t)
-               :max-time 3))
+                           (if (equal line "Sleeping for 15 more seconds.")
+                               (progn
+                                 (format t " --- Ready to kill.~%")
+                                 t)
+                             nil))
+               :max-time 5))
 
 ;; And similarly for a process that launches "bad" processes.
 (loop for i from 1 to 5 do
       (format t "*** Starting badsleepN test ~s.~%" i)
-      (do-test :cmd "./badsleepN.sh 10 5"
+      (do-test :cmd "./badsleepN.sh 15 5"
                :subname "badsleep.pl"
                :ready-fn (lambda (line)
-                           (format t " --- Got line: ~s~%" line)
                            (if (equal line "Waiting for badsleep.pl processes to finish.")
                                (progn
-                                (format t " --- Ready to kill.~%")
-                                t)
+                                 (format t " --- Ready to kill.~%")
+                                 t)
                              nil))
-               :max-time 3))
+               :max-time 5))
 
 
 ;; OK, so the pgrp based kill seems to work well, but perhaps a simpler

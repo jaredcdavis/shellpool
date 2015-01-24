@@ -64,6 +64,7 @@
    and return its stdout output as a string list."
   (let* ((stdout nil)
          (stderr nil)
+         (shellpool:*debug* nil)
          (each-line (lambda (line type)
                       (case type
                         (:stdout (push line stdout))
@@ -81,8 +82,11 @@
 (defun list-processes ()
   "Try to get a list of all processes that are currently running.  Used in
    interruption tests."
-  ;; BOZO don't know how portable this is.
-  (ezrun "ps ax"))
+  #+linux
+  (ezrun "ps ax")
+  #+freebsd
+  (ezrun "ps ax -o pid,gid,ppid,pgid,command")
+  )
 
 (defun has-process (name)
   "Check if a process is running."
