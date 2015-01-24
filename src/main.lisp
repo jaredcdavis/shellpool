@@ -106,10 +106,14 @@
 ; ----------------------------------------------------------------------------
 ; Glue
 
+#-sbcl
+(defun find-bash () "bash")
+
+#+sbcl
+;; SBCL (on Linux, at least) won't successfully run "bash" all by itself.  So,
+;; on SBCL, try to find a likely bash.  BOZO this probably isn't great.  It
+;; would be better to search the user's PATH for which bash to use.
 (let ((found-bash))
-  ;; BOZO this probably isn't great.  It might be better to use whichever
-  ;; version of bash is newest, or whichever version is in the user's PATH, or
-  ;; ...?
   (defun find-bash ()
     (or found-bash
 	(let ((paths-to-try '("/bin/bash"
