@@ -5,13 +5,14 @@ Eventually I would like this to become an ordinary Quicklisp package,
 but it is currently way too preliminary to try to distribute via
 Quicklisp.  In the interim, here is how to install it.
 
-* Install [Clozure Common Lisp](http://ccl.clozure.com/) or [SBCL](http://sbcl.org/)
+* Install a supported Lisp, e.g., [Clozure Common
+Lisp](http://ccl.clozure.com/) or whatever you prefer.
 
 * Install [Quicklisp](http://www.quicklisp.org/), e.g.,:
 
 ```shell
 $ curl -O http://beta.quicklisp.org/quicklisp.lisp
-$ ccl # or sbcl
+$ ccl # or whatever your Lisp is
 (load "quicklisp.lisp")
 (quicklisp-quickstart:install)
 (ql:add-to-init-file)
@@ -32,6 +33,6 @@ $ git clone https://github.com/jaredcdavis/shellpool
 This should then allow you to load Shellpool by just quickloading it, e.g.,:
 
 ```
-$ ccl # or sbcl
+$ ccl # or whatever your Lisp is
 (ql:quickload "shellpool")
 ```

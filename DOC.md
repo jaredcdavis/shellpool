@@ -6,28 +6,28 @@ See also the [Installation](INSTALL.md) instructions.
 
 ## Minimal Example
 
-The typical way to use Shellpool is to first `start` some bash processes, and
-then `run` external commands.
+The typical way to use Shellpool is to `start` some bash processes and
+then `run` some commands.
 
 ```
 $ ccl                                ;; start lisp
 ? (ql:quickload :shellpool)          ;; load shellpool (see installation instructions!)
-? (shellpool:start)                  ;; start up a supporting bash shell
+? (shellpool:start)                  ;; start a bash shell
 ? (shellpool:run "echo hello")       ;; run a command
 hello                                ;; some output printed by the command
 0                                    ;; the resulting exit status
 ```
 
 Why are `start` and `run` separated?  Launching external programs involves
-[forking](http://en.wikipedia.org/wiki/Fork_%28operating_system%29) your Lisp
-image, which is **not reliable** when your application has many GB of memory
-allocated or multiple threads are already running.  (Here are
+[forking](http://en.wikipedia.org/wiki/Fork_%28operating_system%29) your Lisp.
+Forking is **not reliable** when your Lisp has many GB of memory allocated or
+multiple threads are already running.  (Here are
 [some](http://www.linuxprogrammingblog.com/threads-and-fork-think-twice-before-using-them)
 [articles](http://bryanmarty.com/2012/01/14/forking-jvm/) for background.)
-Separating `start` from `run` largely solves these problems.  The idea is to
-`start` your shells early while your program is booting up, before creating any
-helper threads or allocating lots of memory.  From then on, you can freely
-`run` external programs by using these shells instead of having to fork.
+Separating `start` from `run` largely solves these problems: you can `start`
+your shells early while your program is booting up, before creating any helper
+threads or allocating lots of memory.  You can then freely `run` external
+programs from these shells without having to fork Lisp.
 
 
 ## Starting Shells
@@ -45,20 +45,20 @@ sub-commands.  Typically `start` is only called once at the start of your
 program, but you can also call it subsequently to start up additional shells,
 as shown above.
 
-How many shells should you create?  The number of shells you create will govern
-how many simultaneous external programs you can `run` at a time.
+How many shells should you start?  The number of shells you create will limit
+how many simultaneous external programs you can `run` at a time.  So:
 
  - If your Lisp program is single-threaded, a single shell will be fine.
 
  - If your Lisp program is multi-threaded (e.g., a web server or similar), and
-   each thread needs to be able to invoke external programs, then you may want
-   several shells.  (The `run` command will wait until a shell becomes
+   you need to be able to invoke external programs from many threads, then you
+   may want many shells.  (The `run` command will wait until a shell becomes
    available, so running out of shells might throttle your program.)
 
 
 ## Running Commands
 
-### `(run cmd [options]) --> exit-status`
+### `(run script [options]) --> exit-status`
 
 Examples:
 ```
@@ -67,19 +67,12 @@ Examples:
 ```
 
 The `run` function runs a command and waits for it to finish (so it can give
-you the exit status).  For instance, you can expect:
+you the exit status).  For instance, you can expect `(time (shellpool:run
+"sleep 5"))` to report something like 5.001 seconds and return 0.
 
-  ```(time (shellpool:run "sleep 5"))```
-
-to report something like 5.001 seconds and return 0.
-
-The command to execute must be a string.  This string will be written into a
-temporary script that will be run with `bash`.  This has many consequences, for
-instance:
-
-  - You need to be careful about properly escaping things.
-  - You can freely use output redirection.
-  - You can actually give the whole guts of a bash shell script here.
+The `script` to execute must be a string.  This string will be written into a
+temporary script that will be run by `bash`.  You can write whole bash scripts
+with functions, sequences of commands, etc.
 
 The temporary script will be run with `/dev/null` as its input.  This isn't
 suitable for running scripts that need to prompt the user for input.
@@ -87,10 +80,13 @@ suitable for running scripts that need to prompt the user for input.
 
 ### Handling Output
 
-By default, output that **cmd** prints to standard output will be printed to
-`*standard-output*`, and output that it prints to standard error will be
-printed to `*error-output*`.  So, one way to redirect the output from your
-command is to just `let`-binding these streams.  For instance, you could do:
+By default, output that your `script` prints is forwarded sensibly:
+
+  - output to `stdout` goes to `*standard-output*`
+  - output to `stderr` goes to `*error-output*`
+
+An easy way to change where the output goes is to `let`-bind these streams.
+For instance, to collect `stdout` instead of streaming it, you could do this:
 
 ```
 ? (let* ((stream            (make-string-output-stream))
@@ -103,13 +99,12 @@ World
 "
 ```
 
-In some cases you may want more flexibility.  In this case, you can supply your
-own line-handling function.  For instance:
+For more flexibility, you can write your own line-handling function.  Your
+function will get the `line` to process and its `type` (i.e., whether it is a
+`stdout` or `stderr` line).  For example:
 
 ```
 ? (defun my-handle-line (line type)
-    ;; LINE is a string -- a single line of output
-    ;; TYPE is either :STDOUT or :STDERR
     (format t "On ~s, got ~s~%" type line))
 
 ? (shellpool:run "echo hello
@@ -122,12 +117,12 @@ On :STDERR, got "world"
 On :STDERR, got "bar"
 On :STDOUT, got "hello"
 On :STDOUT, got "foo"
-7 ;; <-- return value from (shellpool:run ...)
+7                          ;; <-- return value from (shellpool:run ...)
 ```
 
-You can of course get fancier and use this mechanism to collect up output,
-transform it on the fly, filter it, etc.  Here is a slightly more interesting
-example where we collect the stdout and stderr lines separately:
+You can use this to collect up output, transform it on the fly, filter it,
+stream it to any number of places, etc.  For example, here is a way to
+separately collect the stdout and stderr lines without any streaming:
 
 ```
 ? (defun fancy-runner (cmd)
