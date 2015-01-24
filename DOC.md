@@ -154,9 +154,11 @@ separately collect the stdout and stderr lines without any streaming:
 BOZO document me
 
 
-## Stopping
+## Stopping Shells
 
 Shellpool does not provide a way to stop the shells after they have been
-created.  It is vaguely possible that a shutdown mechanism could be added in
-the future, but this would be challenging to get right.  For instance, what if
-there are commands running in the sub-shells?
+created.
+
+It is vaguely possible that we could add a shutdown mechanism, but this would
+be challenging to get right.  For instance, what if there are commands running
+in the sub-shells?  Would you want to kill them all?
