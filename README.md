@@ -56,9 +56,12 @@ compatibility with your system.
  - **FreeBSD**.  All tests pass on CCL, SBCL, CMUCL, and ABCL.  Note that SBCL
    must be compiled with `--with-sb-thread`.
 
- - **Windows**.  All tests pass on 32-bit CCL trunk on a system with Cygwin
-   installed and the Cygwin `procps` package installed (for the `pgrep`
-   command).  I have not tested other Lisps, msys, etc.
+ - **Windows**.  All tests pass on 32-bit CCL trunk on a Windows XP system with
+   Cygwin installed and (for `pgrep`) the Cygwin `procps` package installed.
+   However, it is likely that there are problems that the test suite does not
+   cover, e.g., interrupting native Windows applications will probably not work
+   well.  I have not tested other Lisps, msys, etc., but the CCL port may make
+   such a task much easier.
 
 I would welcome patches that provide support for other Lisps or operating
 systems, or for adding additional test cases.  It would likely be very easy to
