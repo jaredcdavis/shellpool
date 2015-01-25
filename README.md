@@ -69,20 +69,13 @@ port shellpool to other Unix-like operating systems.  I have looked into
 porting shellpool to CLISP and ECL, but their `run-program` commands lack
 `stderr` support, which is problematic.
 
-
-### Dependencies
-
-Lisp Libraries:
+Shellpool depends on the following Common Lisp libraries.  Normally these are
+installed automatically, via [quicklisp](http://www.quicklisp.org):
 
   - [trivial-features](http://www.cliki.net/trivial-features) for identifying OS
   - [cl-fad](http://weitz.de/cl-fad/) for handling temporary files
   - [bordeaux-threads](http://common-lisp.net/project/bordeaux-threads/) for multithreading
   - [bt-semaphore](https://github.com/rmoritz/bt-semaphore) for semaphores
-
-Required Utilities:
-
-  - [Bash](https://www.gnu.org/software/bash/)
-  - [Pgrep]
 
 
 ## Related Lisp Libraries
