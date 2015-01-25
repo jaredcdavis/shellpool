@@ -127,53 +127,66 @@
 (loop for i from 1 to 5 do
       (format t "*** Starting basic sleep test ~s.~%" i)
       (do-test :cmd "./sleep.pl 15"
-               :subname "sleep.pl"
+
+               :subname
+               ;; For whatever reason, Cygwin's PS command doesn't show this as
+               ;; "sleep.pl" but rather shows it as "/usr/bin/perl", so we'll
+               ;; look for that process name on Windows.
+               #-windows "sleep.pl"
+               #+windows "perl"
+
                :ready-fn (lambda (line)
                            (if (equal line "Sleeping for 15 more seconds.")
                                (progn
                                  (format t " --- Ready to kill.~%")
                                  t)
                              nil))
-               :max-time 5))
+               :max-time 10))
 
 ;; Check of whether we can kill subprocesses that our command launches.
 (loop for i from 1 to 5 do
       (format t "*** Starting sleepN test ~s.~%" i)
       (do-test :cmd "./sleepN.sh 15 5"
-               :subname "sleep.pl"
+               :subname
+               #-windows "sleep.pl"
+               #+windows "perl"
                :ready-fn (lambda (line)
                            (if (equal line "Waiting for sleep.pl processes to finish.")
                                (progn
                                 (format t " --- Ready to kill.~%")
                                 t)
                              nil))
-               :max-time 5))
+               :max-time 10))
 
 ;; Check whether we can kill off a "bad" process that ignores various kill signals.
 (loop for i from 1 to 5 do
       (format t "*** Starting badsleep test ~s.~%" i)
       (do-test :cmd "./badsleep.pl 15"
-               :subname "badsleep.pl"
+               :subname
+               #-windows "badsleep.pl"
+               #+windows "perl"
                :ready-fn (lambda (line)
                            (if (equal line "Sleeping for 15 more seconds.")
                                (progn
                                  (format t " --- Ready to kill.~%")
                                  t)
                              nil))
-               :max-time 5))
+               :max-time 10))
 
 ;; And similarly for a process that launches "bad" processes.
 (loop for i from 1 to 5 do
       (format t "*** Starting badsleepN test ~s.~%" i)
       (do-test :cmd "./badsleepN.sh 15 5"
-               :subname "badsleep.pl"
+               :subname
+               #-windows "badsleep.pl"
+               #+windows "perl"
                :ready-fn (lambda (line)
                            (if (equal line "Waiting for badsleep.pl processes to finish.")
                                (progn
                                  (format t " --- Ready to kill.~%")
                                  t)
                              nil))
-               :max-time 5))
+               :max-time 10))
 
 
 ;; OK, so the pgrp based kill seems to work well, but perhaps a simpler

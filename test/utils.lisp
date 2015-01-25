@@ -86,6 +86,8 @@
   (ezrun "ps ax")
   #+freebsd
   (ezrun "ps ax -o pid,gid,ppid,pgid,command")
+  #+windows
+  (ezrun "ps ax") ;; works on cygwin, at least
   )
 
 (defun has-process (name)

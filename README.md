@@ -47,50 +47,24 @@ to command-line input from the user or for
 ## Portability
 
 There is reasonably good [test suite](test/) that can be used to help ensure
-compatibility with your system.  I would welcome any patches that provide
-support for other Lisps or operating systems, or for adding additional test
-cases.  Current status:
+compatibility with your system.
 
-CCL:
-  - Linux: all tests pass
-  - FreeBSD: all tests pass
-  - Windows: ??
-  - Mac: ??
+ - **Linux**.  All tests pass on CCL, SBCL, CMUCL, ABCL, Allegro, and
+   Lispworks.  Note that for Lispworks you may need to run
+   `(bt:start-multiprocessing)` before using Shellpool.
 
-SBCL:
+ - **FreeBSD**.  All tests pass on CCL, SBCL, CMUCL, and ABCL.  Note that SBCL
+   must be compiled with `--with-sb-thread`.
 
-  - Linux: all tests pass
-  - FreeBSD: all tests pass (Note: compile SBCL with --with-sb-thread)
-  - Windows: ??
-  - Mac: ??
+ - **Windows**.  All tests pass on 32-bit CCL trunk on a system with Cygwin
+   installed and the Cygwin `procps` package installed (for the `pgrep`
+   command).  I have not tested other Lisps, msys, etc.
 
-CMUCL:
-  - Linux: all tests pass
-  - FreeBSD: all tests pass
-  - Windows: ??
-  - Mac: ??
-
-ABCL:
-  - Linux: all tests pass
-  - FreeBSD: all tests pass
-  - Windows: ??
-  - Mac: ??
-
-Allegro:
-  - Linux: all tests pass
-  - FreeBSD: ??
-  - Windows: ??
-  - Mac: ??
-
-Lispworks:
-  - Linux: all tests pass (Note: run `(bt:start-multiprocessing)` first!)
-  - FreeBSD: ??
-  - Windows: ??
-  - Mac: ??
-
-CLISP: doesn't work at all (`run-program` lacks `stderr` streams)
-
-ECL: doesn't work at all (`run-program` lacks `stderr` streams)
+I would welcome patches that provide support for other Lisps or operating
+systems, or for adding additional test cases.  It would likely be very easy to
+port shellpool to other Unix-like operating systems.  I have looked into
+porting shellpool to CLISP and ECL, but their `run-program` commands lack
+`stderr` support, which is problematic.
 
 
 ### Dependencies
@@ -105,6 +79,7 @@ Lisp Libraries:
 Required Utilities:
 
   - [Bash](https://www.gnu.org/software/bash/)
+  - [Pgrep]
 
 
 ## Related Lisp Libraries

@@ -102,12 +102,14 @@
   (strpos-fast x y 0 (length x) (length y)))
 
 
-
 ; ----------------------------------------------------------------------------
 ; Glue
 
+
 #-sbcl
-(defun find-bash () "bash")
+(defun find-bash ()
+  #+windows "bash.exe"
+  #-windows "bash")
 
 #+sbcl
 ;; SBCL (on Linux, at least) won't successfully run "bash" all by itself.  So,
@@ -116,14 +118,14 @@
 (let ((found-bash))
   (defun find-bash ()
     (or found-bash
-	(let ((paths-to-try '("/bin/bash"
-			      "/usr/bin/bash"
-			      "/usr/local/bin/bash")))
-	  (loop for path in paths-to-try do
-		(when (cl-fad::file-exists-p path)
-		  (setq found-bash path)
-		  (return-from find-bash path)))
-	  (error "Bash not found among ~s" paths-to-try)))))
+        (let ((paths-to-try '("/bin/bash"
+                              "/usr/bin/bash"
+                              "/usr/local/bin/bash")))
+          (loop for path in paths-to-try do
+                (when (cl-fad::file-exists-p path)
+                  (setq found-bash path)
+                  (return-from find-bash path)))
+          (error "Bash not found among ~s" paths-to-try)))))
 
 #+(or allegro lispworks)
 (defstruct bashprocess
@@ -132,22 +134,27 @@
   (stderr))
 
 (defun make-bash ()
-  (let ((bash (find-bash)))
+  (let ((bash (find-bash))
+        ;; For Windows, invoking Bash with "-o igncr" seems to basically solve
+        ;; a bunch of errors due to carriage-return end of line stuff.
+        ;; (Without this shellpool wasn't working at all.)
+        (args #+windows (list "-o" "igncr")
+              #-windows nil))
     #+ccl
-    (ccl:run-program bash nil
-		     :wait   nil
-		     :input  :stream
-		     :output :stream
-		     :error  :stream
-		     :sharing :external)
+    (ccl:run-program bash args
+                     :wait   nil
+                     :input  :stream
+                     :output :stream
+                     :error  :stream
+                     :sharing :external)
     #+sbcl
-    (sb-ext:run-program bash nil
-			:wait nil
-			:input :stream
-			:output :stream
-			:error :stream)
+    (sb-ext:run-program bash args
+                        :wait nil
+                        :input :stream
+                        :output :stream
+                        :error :stream)
     #+cmucl
-    (extensions:run-program bash nil
+    (extensions:run-program bash args
                             :wait nil
                             :input :stream
                             :output :stream
@@ -155,6 +162,7 @@
     #+allegro
     (multiple-value-bind (stdin stdout stderr pid)
         (excl:run-shell-command bash
+                                ;; BOZO somewhere to put args?
                                 :wait nil
                                 :input :stream
                                 :output :stream
@@ -168,6 +176,7 @@
     ;; This doesn't seem to work at all.
     (multiple-value-bind (stdio stderr pid)
         (system:run-shell-command bash
+                                  ;; BOZO somewhere to put args?
                                   :wait nil
                                   :input :stream
                                   :output :stream
@@ -178,7 +187,7 @@
                         :stderr stderr))
 
     #+abcl
-    (system:run-program bash nil :wait nil)
+    (system:run-program bash args :wait nil)
 
     ;; CLISP and ECL each have run-program commands, which look mostly similar
     ;; to that of many of these other Lisps, but they don't seem to provide any
@@ -314,7 +323,10 @@
 (define-constant +allkids+
   ;; Bash script to recursively collect the children of a process.
   ;;  - Works on Linux and FreeBSD at least.
-  ;;  - May need to be modified to work on Mac/Windows/etc.
+  ;;  - For Windows this also seems to work, with some caveats:
+  ;;     * needs the procps cygwin package installed
+  ;;     * may NOT work for native windows processes (instead of
+  ;;       cygwin processes?)
   ;;
   ;; If you need to port this to some other OS, some useful commands
   ;; that we used when developing it on FreeBSD/Linux were:
@@ -401,9 +413,7 @@
       (finish-output aux-in)
 
       (unless (bash-alive-p aux)
-        (error "Shellpool error: aux shell died?"))
-
-      )))
+        (error "Shellpool error: aux shell died?")))))
 
 (defun default-each-line (line type)
   (declare (type string line))
@@ -501,7 +511,6 @@
   ;; user's scripts.
   (concatenate 'string
                "set -o pipefail" nl
-
                "shellpool_add_plus() { local line; while read line; do echo \"+$line\"; done }" nl
                "shellpool_add_minus() { local line; while read line; do echo \"-$line\"; done }" nl
                "(((bash " filename
@@ -687,5 +696,3 @@
       (write-line cmd aux-in)
       (finish-output aux-in)))
   nil)
-
-

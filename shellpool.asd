@@ -37,9 +37,6 @@
 #-(or ccl sbcl cmucl allegro abcl lispworks)
 (error "~%~%Error: Shellpool has not yet been ported to this Lisp; patches welcome.~%~%")
 
-#+(or mswindows windows win32)
-(error "~%~%Error: Shellpool has not yet been ported to Windows; patches welcome.~%~%")
-
 #+(and sbcl (not sb-thread))
 (error "~%~%Error: Shellpool requires an SBCL compiled with --with-sb-thread.~%~%")
 
