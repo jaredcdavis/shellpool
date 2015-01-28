@@ -161,3 +161,29 @@
 ;;             (loop-finish)))))
 
 
+
+(let ((oops nil))
+  (format t "** Checking that starting too many shells doesn't work.~%")
+  (handler-case
+    (progn (shellpool:start 2000)
+           (setq oops t))
+    (error (condition)
+           (declare (ignore condition))
+           (format t "OK: Got error as expected.~%")
+           nil))
+  (when oops
+    (error "Started 2000 shells?")))
+
+(let ((oops nil))
+  (format t "** Checking that ensure'ing too many shells doesn't work.~%")
+  (handler-case
+    (progn (shellpool:ensure 2000)
+           (setq oops t))
+    (error (condition)
+           (declare (ignore condition))
+           (format t "OK: Got error as expected.~%")
+           nil))
+  (when oops
+    (error "Started 2000 shells?")))
+
+
