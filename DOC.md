@@ -229,12 +229,6 @@ There are other various caveats...
     but it may not work well with native Windows programs.
 
 
-## Background Commands
-
-BOZO document me
-
-
-
 ## Stopping Shells
 
 Shellpool does not currently provide a way to stop the shells after they have
