@@ -1,29 +1,24 @@
-## Extremely preliminary, not ready for public consumption
-
 Shellpool
 =========
 
 Shellpool is a way to run external programs from within a Common Lisp
 program.  It features:
 
+ - **Forking control**.  Sub-programs are launched with a separate shell, so
+   you can avoid
+   [forking](http://en.wikipedia.org/wiki/Fork_%28operating_system%29) your
+   Lisp image, which may be unreliable when applications have dozens of GB of
+   memory allocated or involve multiple threads.
+
  - **Output handling**.  You can easily stream, filter, or collect output from
    the command.  You can access both stdout and stderr lines as they are
    produced, and can tell the difference between them.
 
- - **Exit code**.  Yep, you get it.
+ - **Exit code**.  You get it.
 
  - **Interruption**.  Interrupts are handled gracefully.  After you interrupt
    (e.g., Control C), you can `:continue` to keep running the program, or `:q`
    to terminate the program and return to Lisp as normal.
-
- - **Forking**.  Sub-programs are launched with a separate shell, so you can
-   avoid [forking](http://en.wikipedia.org/wiki/Fork_%28operating_system%29)
-   your Lisp image, which may be unreliable when applications have dozens of GB
-   of memory allocated or involve multiple threads.
-
- - **Background jobs**.  You can (optionally) launch external programs in the
-   background.  (However, you don't get the exit codes and streaming features
-   in this case.)
 
  - **Multithreading**.  You can safely launch multiple programs from multiple
    threads.  Threading support is based on the
@@ -57,17 +52,19 @@ compatibility with your system.
    must be compiled with `--with-sb-thread`.
 
  - **Windows**.  All tests pass on 32-bit CCL trunk on a Windows XP system with
-   Cygwin installed and (for `pgrep`) the Cygwin `procps` package installed.
-   However, it is likely that there are problems that the test suite does not
-   cover, e.g., interrupting native Windows applications will probably not work
-   well.  I have not tested other Lisps, msys, etc., but the CCL port may make
-   such a task much easier.
+   Cygwin installed and the Cygwin `procps` package installed (for `pgrep`).
+   (It is likely that there are problems that the test suite does not cover,
+   e.g., interrupting native Windows applications will probably not work well.
+   I have not tested other Lisps, msys, etc., but the CCL port may make such a
+   task much easier.)
+
+Shellpool will not currently work on CLISP or ECL because their `run-program`
+commands lack `stderr` support, which Shellpool currently depends on being able
+to use.
 
 I would welcome patches that provide support for other Lisps or operating
 systems, or for adding additional test cases.  It would likely be very easy to
-port shellpool to other Unix-like operating systems.  I have looked into
-porting shellpool to CLISP and ECL, but their `run-program` commands lack
-`stderr` support, which is problematic.
+port shellpool to other Unix-like operating systems.
 
 Shellpool depends on the following Common Lisp libraries.  Normally these are
 installed automatically, via [quicklisp](http://www.quicklisp.org):
@@ -80,8 +77,7 @@ installed automatically, via [quicklisp](http://www.quicklisp.org):
 
 ## Related Lisp Libraries
 
-If shellpool isn't quite right for you, you might look at these other Lisp
-libraries.
+If shellpool isn't quite right for you, here are some related Lisp libraries.
 
  - [inferior-shell](http://common-lisp.net/projects/qitab/) is allegedly very
    complete and portable for synchronous shells.  It has fancy features like
