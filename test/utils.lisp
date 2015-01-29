@@ -88,6 +88,8 @@
   (ezrun "ps ax -o pid,gid,ppid,pgid,command")
   #+windows
   (ezrun "ps ax") ;; works on cygwin, at least
+  #+openbsd
+  (ezrun "ps ax")
   )
 
 (defun has-process (name)

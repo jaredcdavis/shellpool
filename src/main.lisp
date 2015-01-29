@@ -336,8 +336,35 @@
   ;;   $ ps ax -o pid,gid,ppid,pgid,command
   ;;        - lets us see their PIDs, etc.
   ;;   $ ... hack together an allkids function and test it on $$ ...
+  ;;
+  ;; When I ported this to OpenBSD 5.6, I noticed that shellpool would
+  ;; reliably fail the kill tests, issuing 'shell is corrupted' messages
+  ;; such as this:
+  ;;    Shellpool: Shell is corrupted: "+Sleeping for 14 more seconds."
+  ;;
+  ;; Thinking about this, I realized that my original implementation of allkids
+  ;; was simply returning the PID for the process and all of its transitive
+  ;; children in some arbitrary order.  Supposing that the 'kill' command
+  ;; simply walks over them and kills them one by one, this would give no
+  ;; guarantee that the children are killed before the parent.  That could lead
+  ;; to the kind of corruption message above: the parent could be killed early,
+  ;; causing shellpool's 'wait' command to think it's time for the exit line;
+  ;; meanwhile the subprocesses could continue to print messages before being
+  ;; killed.  These messages could thus arrive after the exit line, corrupting
+  ;; the shell.
+  ;;
+  ;; To avoid this, allkids now takes a two arguments.  Think of it as
+  ;; allkids(pid, printp), where printp becomes true on any recursive call but
+  ;; is originally false.  In other words, allkids no longer prints out the PID
+  ;; of the parent process, but only prints the PIDs only of the (transitive)
+  ;; children.  This way, we can kill just the children first, and the parents
+  ;; later.
+
   "function allkids() {
-     echo $1
+     if [ ! -z \"$2\" ]
+     then
+         echo $1
+     fi
      local children=`pgrep -P $1`
      if [ -z \"$children\" ]
      then
@@ -345,7 +372,7 @@
      else
          for child in $children
          do
-             allkids $child
+             allkids $child 1
          done
      fi
   }")
@@ -403,11 +430,17 @@
 
       ;; Killing is a bit trickier than just sending a kill signal to the
       ;; target PID, because the PID can spawn children.  See +allkids+ above.
+
       ;; We arrange so that the aux shell starts with the allkids function
       ;; defined.  We can then be sure to kill all the children that your
       ;; process has created.
 
+      ;; Kill all children:
       (format aux-in "kill -9 $(allkids ~s)~%" pid)
+
+      ;; Kill the parent last.  See the comments in +allkids+ above.
+      (format aux-in "kill -9 ~s~%" pid)
+
       ;; Use finish-output, not force-output, because we want to be very sure
       ;; this gets run.
       (finish-output aux-in)
