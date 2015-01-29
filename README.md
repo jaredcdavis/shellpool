@@ -32,7 +32,8 @@ to command-line input from the user or for
 
 ## Resources
 
- - [Github Project](https://github.com/jaredcdavis/shellpool)
+ - [Github Project](https://github.com/jaredcdavis/shellpool) -- This is the
+   main shellpool homepage.  Please feel free to use the issue tracker, etc.
 
  - [Installation](INSTALL.md)
 
@@ -44,19 +45,19 @@ to command-line input from the user or for
 There is reasonably good [test suite](test/) that can be used to help ensure
 compatibility with your system.
 
- - **Linux**.  All tests pass on CCL, SBCL, CMUCL, ABCL, Allegro, and
+ - **Linux**.  All tests should pass on CCL, SBCL, CMUCL, ABCL, Allegro, and
    Lispworks.  Note that for Lispworks you may need to run
    `(bt:start-multiprocessing)` before using Shellpool.
 
- - **FreeBSD**.  All tests pass on CCL, SBCL, CMUCL, and ABCL.  Note that SBCL
-   must be compiled with `--with-sb-thread`.
+ - **FreeBSD**.  All tests should pass on CCL, SBCL, CMUCL, and ABCL.  Note
+   that SBCL must be compiled with `--with-sb-thread`.
 
- - **Windows**.  All tests pass on 32-bit CCL trunk on a Windows XP system with
-   Cygwin installed and the Cygwin `procps` package installed (for `pgrep`).
-   (It is likely that there are problems that the test suite does not cover,
-   e.g., interrupting native Windows applications will probably not work well.
-   I have not tested other Lisps, msys, etc., but the CCL port may make such a
-   task much easier.)
+ - **Windows**.  All tests should pass on 32-bit CCL trunk on a Windows XP
+   system with Cygwin installed and the Cygwin `procps` package installed (for
+   `pgrep`).  (It is likely that there are problems that the test suite does
+   not cover, e.g., interrupting native Windows applications will probably not
+   work well.  I have not tested other Lisps, msys, etc., but the CCL port may
+   make such a task much easier.)
 
 Shellpool will not currently work on CLISP or ECL because their `run-program`
 commands lack `stderr` support, which Shellpool currently depends on being able
