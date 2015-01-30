@@ -39,6 +39,12 @@ ensure compatibility with your system.
    me when I try to enable threading, so it probably won't work.  I don't know
    of other Common Lisps for this platform.
 
+When I re-run the test suite on various platforms, I often use Git tags to mark
+the commits.  You can [inspect these
+tags](https://github.com/jaredcdavis/shellpool/tags) to see detailed
+information on the testing platforms, such as the Lisp and OS versions
+involved.
+
 
 ## Not Supported
 
