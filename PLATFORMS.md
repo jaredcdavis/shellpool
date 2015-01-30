@@ -10,8 +10,8 @@ Common Lisp libraries.  Normally you can install these automatically using
   - [bordeaux-threads](http://common-lisp.net/project/bordeaux-threads/) for multithreading
   - [bt-semaphore](https://github.com/rmoritz/bt-semaphore) for semaphores
 
-Beyond these libraries Shellpool mostly just needs `bash` and `pgrep`, which
-are available on many systems.
+Beyond these libraries Shellpool just needs `bash` and `pgrep`, which are
+available on many systems.
 
 
 ## Supported Platforms
