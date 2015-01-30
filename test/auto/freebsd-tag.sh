@@ -2,7 +2,7 @@
 
 set -e
 
-if [ ! -z "`git tag --contains HEAD | grep linux`" ]
+if [ ! -z "`git tag --contains HEAD | grep freebsd`" ]
 then
     echo "Oops, looks like this version is already tagged:"
     git tag --contains HEAD
@@ -16,18 +16,18 @@ then
     exit 1
 fi
 
-echo "Running linux tests."
-./linux-test.sh
+echo "Running freebsd tests."
+./freebsd-test.sh
 
 DATE=`date +"%F_%T" | sed 's/:/_/g'`
-TAG="linux.$DATE"
+TAG="freebsd.$DATE"
 
-echo "Linux tests passed."
+echo "FreeBSD tests passed."
 echo "Collecting platform information..."
 
 rm -f tagmessage
-echo "Linux tests passed. " > tagmessage
-./linux-info.sh | tee --append tagmessage
+echo "FreeBSD tests passed. " > tagmessage
+./freebsd-info.sh | tee -a tagmessage
 
 echo "Adding Git tag."
 git tag -a $TAG -F tagmessage

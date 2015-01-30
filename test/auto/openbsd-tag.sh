@@ -22,11 +22,11 @@ time ./openbsd-test.sh
 DATE=`date +"%F_%T" | sed 's/:/_/g'`
 TAG="openbsd.$DATE"
 
-echo "All openbsd tests passed."
+echo "OpenBSD tests passed."
 echo "Collecting platform information..."
 
 rm -f tagmessage
-echo "All openbsd tests passed. " > tagmessage
+echo "OpenBSD tests passed. " > tagmessage
 time ./openbsd-info.sh | tee -a tagmessage
 
 echo "Adding Git tag."
