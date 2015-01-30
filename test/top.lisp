@@ -40,6 +40,19 @@
 #+lispworks
 (bt:start-multiprocessing)
 
+
+(let ((oops nil))
+  (format t "** Checking running a command before starting any shells.~%")
+  (handler-case
+    (progn (shellpool:run "echo hello")
+           (setq oops t))
+    (error (condition)
+           (declare (ignore condition))
+           (format t "OK: Got error as expected.~%")
+           nil))
+  (when oops
+    (error "Running a command without any shells worked?")))
+
 (shellpool:start)
 
 (load "utils.lisp")

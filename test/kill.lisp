@@ -189,5 +189,3 @@
                :max-time 10))
 
 
-;; OK, so the pgrp based kill seems to work well, but perhaps a simpler
-;; method would work?

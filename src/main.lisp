@@ -277,13 +277,23 @@
   ;; RUNNERS are an ordinary list of RUNNERs that are available for running
   ;; foreground shell commands with RUN.  Invariant: Every runner is always OK,
   ;; i.e., there are no runners marked with ERR.
-  (runners))
+  (runners)
+
+  ;; TOTAL is the total number of shells that have been started.  It can exceed
+  ;; (length runners) because, whereas shells are taken out of the list of
+  ;; runners by WITH-RUNNER, total is mainly intended for use in ENSURE and is
+  ;; (typically) not changed merely because a shell is in use.  (We may
+  ;; decrease it if a shell dies unexpectedly.)
+  ;;
+  ;; Locking convention: the LOCK must be held while you inspect/access total.
+  (total))
 
 (defparameter *state*
   (make-state :lock       (bt:make-lock "shellpool state lock")
               :aux        nil
               :sem        (bt-sem:make-semaphore)
-              :runners    nil))
+              :runners    nil
+              :total      0))
 
 (defmacro with-state-lock (&rest forms)
   `(bt:with-lock-held ((state-lock *state*))
@@ -293,6 +303,11 @@
   `(let ((,name nil))
      (unwind-protect
          (progn
+           (with-state-lock
+             ;; This isn't a perfect defense against all shells dying, but in
+             ;; practice it should be pretty good.
+             (when (eql (state-total *state*) 0)
+               (error "No shells are available.")))
            (unless (bt-sem:wait-on-semaphore (state-sem *state*))
              (error "Failed to acquire runner"))
            (with-state-lock
@@ -310,7 +325,11 @@
        ;; Clean up by putting the runner back.
        (with-state-lock
          (cond ((runner-err runner)
-                (debug-msg "Not reinstalling runner due to error.~%"))
+                (debug-msg "Not reinstalling runner due to error.~%")
+                ;; In this very unusual case, decrease the total number of
+                ;; shells since one has died.
+                (setf (state-total *state*)
+                      (max 0 (- (state-total *state*) 1))))
                (t
                 (push ,name (state-runners *state*))
                 (bt-sem:signal-semaphore (state-sem *state*))))))))
@@ -383,10 +402,15 @@
     (loop for i from 1 to n do
           (let* ((sh    (make-bash))
                  (sh-in (bash-in sh)))
+            ;; Try to make sure that if the shell itself is killed, we get a
+            ;; chance to see that it has died.  This isn't a guarantee, of
+            ;; course: the shell could always get killed with -9 and we'll
+            ;; never have a chance to see it go.
             (format sh-in "trap \"echo ~s; echo ~s 1>&2; exit\" SIGHUP SIGINT SIGTERM~%"
                     +death-line+ +death-line+)
             (push (make-runner :err nil :sh sh)
                   (state-runners state))))
+    (incf (state-total state) n)
     (bt-sem:signal-semaphore (state-sem state) n)))
 
 (defparameter *max-shells* 1000
@@ -397,9 +421,13 @@
 
 (defun start (&optional (n '1))
   "Start some number of shells and ensure that the aux shell is running."
-  (when (>= n *max-shells*)
-    (error "Starting ~s shells would be insane." n))
+  (check-type n unsigned-byte)
+  (debug-msg "START: ~s~%" n)
   (with-state-lock
+    (when (>= (+ n (state-total *state*)) *max-shells*)
+      (error "Too many shells.  Trying to start ~s shells, which would push ~
+              the total number of shells to ~s.  If you really want to do ~
+              this, adjust shellpool:*max-shells*." n (+ n (state-total *state*))))
     (unless (state-aux *state*)
       (debug-msg "START: starting aux shell~%")
       (let* ((aux    (make-bash))
@@ -408,6 +436,15 @@
         (setf (state-aux *state*) aux)))
     (add-runners n)
     nil))
+
+(defun ensure (&optional (n '1))
+  "Ensure that at least n shells are running, starting up shells if needed."
+  (check-type n unsigned-byte)
+  (let* ((current-total (with-state-lock (state-total *state*))))
+    (debug-msg "ENSURE: currently have ~s shells, want ~s.~%" current-total n)
+    (when (<= current-total n)
+      (start (- n current-total))))
+  nil)
 
 (defun parse-pid-line (line)
   ;; Given a line like SHELLPOOL_PID 1234, we return 1234.
@@ -555,8 +592,8 @@
                "echo " +exit-line+ " 1>&2" nl))
 
 
-(defun run (cmd &key (each-line #'default-each-line))
-  (check-type cmd string)
+(defun run (script &key (each-line #'default-each-line))
+  (check-type script string)
   (check-type each-line function)
   (debug-msg "Going into run.~%")
 
@@ -588,8 +625,10 @@
              ;;    PID line.  To avoid this, we do the PID capture outside the
              ;;    command on STDERR, which the user's command has no way to
              ;;    influence.
-             (write-line "trap \"kill -- -$BASHPID\" SIGINT SIGTERM" stream)
-             (write-line cmd stream))))
+
+             ;; BOZO -- test me -- I think we probably don't need to do this.
+             ;; (write-line "trap \"kill -- -$BASHPID\" SIGINT SIGTERM" stream)
+             (write-line script stream))))
       (with-file-to-be-deleted tempfile
 
         (let ((cmd (make-run-command-string (namestring tempfile))))
@@ -720,12 +759,12 @@
 
         exit-status))))
 
-(defun run-background (cmd)
-  (with-state-lock
-    (let* ((aux    (state-aux *state*))
-           (aux-in (bash-in aux))
-           (cmd    (concatenate 'string "(" cmd ") &" nl)))
-      (debug-msg "BG: ~s~%" cmd)
-      (write-line cmd aux-in)
-      (finish-output aux-in)))
-  nil)
+;; (defun run-background (cmd)
+;;   (with-state-lock
+;;     (let* ((aux    (state-aux *state*))
+;;            (aux-in (bash-in aux))
+;;            (cmd    (concatenate 'string "(" cmd ") &" nl)))
+;;       (debug-msg "BG: ~s~%" cmd)
+;;       (write-line cmd aux-in)
+;;       (finish-output aux-in)))
+;;   nil)

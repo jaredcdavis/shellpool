@@ -41,10 +41,10 @@
 (error "~%~%Error: Shellpool requires an SBCL compiled with --with-sb-thread.~%~%")
 
 (defsystem "shellpool"
-  :description "Interface from Common Lisp to External Programs"
-  :version "0.0.1"
-  :author "Kookamara LLC"
-  :license "MIT"
+  :description "A library for running external programs from Common Lisp. (https://github.org/jaredcdavis/shellpool)"
+  :version "0.0.2-dev"
+  :author "Jared Davis <jared@kookamara.com>, Kookamara LLC"
+  :license "An MIT/X11-style license; see the file LICENSE."
   :depends-on (:trivial-features
                :cl-fad
                :bordeaux-threads
