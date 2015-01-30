@@ -25,8 +25,7 @@ program.  It features:
    [bordeaux-threads](http://common-lisp.net/project/bordeaux-threads/)
    library.
 
- - **Portability**.  It runs on [PLATFORMS.md](many Lisps and operating
-   systems).
+ - **Portability**.  It runs on [many Lisps and operating systems](PLATFORMS.md).
 
 Note: Shellpool is **not** suitable for running sub-commands that need access
 to command-line input from the user or for
