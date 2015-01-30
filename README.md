@@ -25,6 +25,9 @@ program.  It features:
    [bordeaux-threads](http://common-lisp.net/project/bordeaux-threads/)
    library.
 
+ - **Portability**.  It runs on [PLATFORMS.md](many Lisps and operating
+   systems).
+
 Note: Shellpool is **not** suitable for running sub-commands that need access
 to command-line input from the user or for
 [TTY](https://en.wikipedia.org/wiki/Terminal_emulator)-based programs.
@@ -38,42 +41,6 @@ to command-line input from the user or for
  - [Installation](INSTALL.md)
 
  - [API Documentation](DOC.md)
-
-
-## Portability
-
-There is reasonably good [test suite](test/) that can be used to help ensure
-compatibility with your system.
-
- - **Linux**.  All tests should pass on CCL, SBCL, CMUCL, ABCL, Allegro, and
-   Lispworks.  Note that for Lispworks you may need to run
-   `(bt:start-multiprocessing)` before using Shellpool.
-
- - **FreeBSD**.  All tests should pass on CCL, SBCL, CMUCL, and ABCL.  Note
-   that SBCL must be compiled with `--with-sb-thread`.
-
- - **Windows**.  All tests should pass on 32-bit CCL trunk on a Windows XP
-   system with Cygwin installed and the Cygwin `procps` package installed (for
-   `pgrep`).  (It is likely that there are problems that the test suite does
-   not cover, e.g., interrupting native Windows applications will probably not
-   work well.  I have not tested other Lisps, msys, etc., but the CCL port may
-   make such a task much easier.)
-
-Shellpool will not currently work on CLISP or ECL because their `run-program`
-commands lack `stderr` support, which Shellpool currently depends on being able
-to use.
-
-I would welcome patches that provide support for other Lisps or operating
-systems, or for adding additional test cases.  It would likely be very easy to
-port shellpool to other Unix-like operating systems.
-
-Shellpool depends on the following Common Lisp libraries.  Normally these are
-installed automatically, via [quicklisp](http://www.quicklisp.org):
-
-  - [trivial-features](http://www.cliki.net/trivial-features) for identifying OS
-  - [cl-fad](http://weitz.de/cl-fad/) for handling temporary files
-  - [bordeaux-threads](http://common-lisp.net/project/bordeaux-threads/) for multithreading
-  - [bt-semaphore](https://github.com/rmoritz/bt-semaphore) for semaphores
 
 
 ## Related Lisp Libraries
@@ -105,3 +72,5 @@ from [Clozure Common Lisp](http://ccl.clozure.com/).  Tshell was developed by
 [Centaur Technology](http://www.centtech.com/) and was distributed as a library
 for [ACL2](http://www.cs.utexas.edu/users/moore/acl2), and was also released
 under the MIT license.
+
+Shellpool was written by [Jared Davis](mailto:jared@centtech.com).
