@@ -82,15 +82,12 @@
 (defun list-processes ()
   "Try to get a list of all processes that are currently running.  Used in
    interruption tests."
-  #+linux
-  (ezrun "ps ax")
+  ;; BOZO is this conditional needed?
   #+freebsd
   (ezrun "ps ax -o pid,gid,ppid,pgid,command")
-  #+windows
-  (ezrun "ps ax") ;; works on cygwin, at least
-  #+openbsd
-  (ezrun "ps ax")
-  )
+  #-freebsd
+  ;; This works on at least: Linux, Windows with Cygwin, OpenBSD, Darwin
+  (ezrun "ps ax"))
 
 (defun has-process (name)
   "Check if a process is running."
