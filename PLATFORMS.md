@@ -26,6 +26,9 @@ ensure compatibility with your system.
  - **FreeBSD**.  All tests should pass on CCL, SBCL, CMUCL, and ABCL.  Note
    that SBCL must be compiled with `--with-sb-thread`.
 
+ - **MacOS**.  All tests should pass on CCL, SBCL, CMUCL, and ABCL.  Note
+   that SBCL must be compiled with `--with-sb-thread`.
+
  - **Windows**.  All tests should pass on 32-bit CCL trunk on a Windows XP
    system with Cygwin installed and the Cygwin `procps` package installed (for
    `pgrep`).
