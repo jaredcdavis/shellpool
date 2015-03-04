@@ -40,6 +40,7 @@
    #:start
    #:ensure
    #:run
+   #:run&
    ))
 
 

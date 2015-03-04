@@ -257,7 +257,7 @@
 
   ;; AUX is a dedicated bash process that is used to:
   ;;   - send kill signals to subsidiary processes to support interrupts,
-  ;;   - launch background commands using run-background
+  ;;   - launch background commands using run&
   ;;
   ;; Note that we only need a single AUX shell to be able to kill any number
   ;; of running processes.  Similarly, since background processes are of a
@@ -759,12 +759,42 @@
 
         exit-status))))
 
-;; (defun run-background (cmd)
-;;   (with-state-lock
-;;     (let* ((aux    (state-aux *state*))
-;;            (aux-in (bash-in aux))
-;;            (cmd    (concatenate 'string "(" cmd ") &" nl)))
-;;       (debug-msg "BG: ~s~%" cmd)
-;;       (write-line cmd aux-in)
-;;       (finish-output aux-in)))
-;;   nil)
+(defun run& (script)
+;; BOZO for some reason this isn't letting me run more than one instance of xclock.
+  (check-type script string)
+  (debug-msg "Going into run&.~%")
+  (let ((tempfile
+         (cl-fad:with-output-to-temporary-file
+          (stream :template "shellpool-%.tmp")
+          ;; We don't need a #!/???/bash line.  We will invoke the script with
+          ;; "bash tempfile" instead.  This avoids needing chmod and avoids
+          ;; needing to know where bash lives.
+          (write-line script stream))))
+    (with-state-lock
+      (let* ((aux    (state-aux *state*))
+             (aux-in (if (not aux)
+                         (error "No shells are available.")
+                       (bash-in aux)))
+             (filename (namestring tempfile))
+
+             ;; Subtle -- if just wrapped all of this with
+             ;; `(with-file-to-be-deleted tempfile`, there'd be no guarantee
+             ;; that the bash shell would run the script before Lisp deleted
+             ;; it.  So, delete it after the bash script runs.
+             ;;
+             ;; BOZO this might not be very good either.  It avoids the race
+             ;; but means that if the bash process doesn't finish then the file
+             ;; will still exist.  Probably we want to have the script delete
+             ;; itself first thing, instead.  But then we have to somehow get
+             ;; the filename into the script.  We could use an environment
+             ;; variable or $@ or something.
+
+             (cmd    (concatenate 'string
+                                  "(bash " filename " < /dev/null 2>&1 > /dev/null ; rm -- " filename ") &
+disown -h $!
+")))
+        (debug-msg "BG: ~s~%" cmd)
+        (write-line cmd aux-in)
+        (finish-output aux-in)
+        )))
+  nil)

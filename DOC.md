@@ -229,6 +229,25 @@ There are other various caveats...
     but it may not work well with native Windows programs.
 
 
+## Background Commands
+
+### `(run& script) --> nil`
+
+Examples:
+```
+(shellpool:run& "xclock")
+(shellpool:run& "firefox http://localhost:9876/")
+```
+
+The `run&` command can be used to run a scripts in the background.  Unlike
+`run`, which waits for your script to finish so that you can capture its output
+and exit code, `run&` simply starts your script and then returns without
+waiting.
+
+This may be useful for launching separate programs for the user to interact
+with, or for starting long-running jobs that don't need to be monitored.
+
+
 ## Stopping Shells
 
 Shellpool does not currently provide a way to stop the shells after they have

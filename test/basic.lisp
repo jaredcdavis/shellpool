@@ -74,6 +74,14 @@
 (basic-test "echo hello 1>&2 "
             :stderr '("hello"))
 
+;; BOZO this isn't working, need to fix partial line stuff, see Issue 11 and
+;; then make these work.
+(basic-test "echo -n hello "
+            :stdout '("hello"))
+
+(basic-test "echo -n hello 1>&2 "
+            :stderr '("hello"))
+
 (basic-test "exit 1"
             :status 1)
 
