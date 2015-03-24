@@ -504,6 +504,7 @@
        (progn . ,forms)
      (delete-file ,filename)))
 
+
 (defun make-run-command-string (filename)
   ;; Extremely tricky and carefully crafted bash code follows.
   ;;
@@ -579,10 +580,70 @@
   ;; This is almost exactly what we'll use, except that we will prefix our
   ;; functions with shellpool_ to reduce the chance of collision with the
   ;; user's scripts.
+  ;;
+  ;; Bug fix for version 0.3.
+  ;;
+  ;; The above definitions of add_plus and add_minus don't work when the script
+  ;; doesn't print a newline on its last line of output.  See
+  ;; https://stackoverflow.com/questions/4165135 for some background.  After
+  ;; tinkering with it, I came up with this patched version, which notices when
+  ;; the last line has content and prints it as if it were a normal line.
+  ;;
+  ;; add_plus() {
+  ;;     local line;
+  ;;     local eof;
+  ;;     eof=""
+  ;;     while [ -z "$eof" ]
+  ;;     do
+  ;;        read line || eof=1
+  ;;        if [ -z "$eof" ]
+  ;;        then
+  ;;            # No EOF so this is a normal line, just echo it.
+  ;;            echo "+$line";
+  ;;        elif [ ! -z "$line" ]
+  ;;        then
+  ;;            # Found EOF and there is content, so echo it.
+  ;;            echo "+$line";
+  ;;        fi
+  ;;     done
+  ;; }
   (concatenate 'string
-               "set -o pipefail" nl
-               "shellpool_add_plus() { local line; while read line; do echo \"+$line\"; done }" nl
-               "shellpool_add_minus() { local line; while read line; do echo \"-$line\"; done }" nl
+               "set -o pipefail
+
+shellpool_add_plus() {
+    local line;
+    local eof;
+    eof=\"\"
+    while [ -z \"$eof\" ]
+    do
+	read line || eof=1
+	if [ -z \"$eof\" ]
+	then
+	    echo \"+$line\";
+	elif [ ! -z \"$line\" ]
+	then
+	    echo \"+$line\";
+	fi
+    done
+}
+
+shellpool_add_minus() {
+    local line;
+    local eof;
+    eof=\"\"
+    while [ -z \"$eof\" ]
+    do
+	read line || eof=1
+	if [ -z \"$eof\" ]
+	then
+	    echo \"-$line\";
+	elif [ ! -z \"$line\" ]
+	then
+	    echo \"-$line\";
+	fi
+    done
+}
+"
                "(((bash " filename
                " < /dev/null | shellpool_add_plus) 3>&1 1>&2 2>&3 | shellpool_add_minus) 2>&1"
                " ; printf \"\\n" +status-line+ " $?\\\n\" ) &" nl

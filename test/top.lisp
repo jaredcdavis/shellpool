@@ -40,7 +40,6 @@
 #+lispworks
 (bt:start-multiprocessing)
 
-
 (let ((oops nil))
   (format t "** Checking running a command before starting any shells.~%")
   (handler-case
