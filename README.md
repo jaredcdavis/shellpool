@@ -7,8 +7,8 @@ program.  It features:
  - **Forking control**.  Sub-programs are launched with a separate shell, so
    you can avoid
    [forking](http://en.wikipedia.org/wiki/Fork_%28operating_system%29) your
-   Lisp image, which may be unreliable when applications have dozens of GB of
-   memory allocated or involve multiple threads.
+   Lisp image, which may be unreliable you have dozens of GB of memory
+   allocated or are running multiple threads.
 
  - **Output handling**.  You can easily stream, filter, or collect output from
    the command.  You can access both stdout and stderr lines as they are
@@ -18,7 +18,7 @@ program.  It features:
 
  - **Interruption**.  Interrupts are handled gracefully.  After you interrupt
    (e.g., Control C), you can `:continue` to keep running the program, or `:q`
-   to terminate the program and return to Lisp as normal.
+   to terminate the sub-program and return to Lisp as normal.
 
  - **Multithreading**.  You can safely launch multiple programs from multiple
    threads.  Threading support is based on the
@@ -36,6 +36,8 @@ to command-line input from the user or for
 
  - [Github Project](https://github.com/jaredcdavis/shellpool) -- This is the
    main shellpool homepage.  Please feel free to use the issue tracker, etc.
+   Note that the **master** branch is the stable version, while the **devel**
+   branch is the under-development version and may be unstable.
 
  - [Installation](INSTALL.md)
 

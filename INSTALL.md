@@ -1,24 +1,23 @@
 Shellpool Installation
 ======================
 
-Eventually I would like this to become an ordinary Quicklisp package,
-but it is currently way too preliminary to try to distribute via
-Quicklisp.  In the interim, here is how to install it.
+Shellpool is now available via [Quicklisp](http://www.quicklisp.org/).
 
-* Install a supported Lisp, e.g., [Clozure Common
-Lisp](http://ccl.clozure.com/) or whatever you prefer.
+After setting up Quicklisp, you should be able to install Shellpool by just
+quickloading it.  That is, after starting your Lisp, just run:
 
-* Install [Quicklisp](http://www.quicklisp.org/), e.g.,:
-
-```shell
-$ curl -O http://beta.quicklisp.org/quicklisp.lisp
-$ ccl # or whatever your Lisp is
-(load "quicklisp.lisp")
-(quicklisp-quickstart:install)
-(ql:add-to-init-file)
-  ;; hit enter key
-(quit)
 ```
+(ql:quickload "shellpool")
+```
+
+And Shellpool should be loaded.
+
+
+### Development Versions
+
+Note that the version of Shellpool that is distributed via Quicklisp may
+occasionally be out of date.  If you want to use the development version
+instead, you can do, e.g.,:
 
 * Locate your quicklisp `local-projects` directory,
   e.g., `~/quicklisp/local-projects`
@@ -30,9 +29,3 @@ $ cd ~/quicklisp/local-projects
 $ git clone https://github.com/jaredcdavis/shellpool
 ```
 
-This should then allow you to load Shellpool by just quickloading it, e.g.,:
-
-```
-$ ccl # or whatever your Lisp is
-(ql:quickload "shellpool")
-```
