@@ -581,7 +581,7 @@
   ;; functions with shellpool_ to reduce the chance of collision with the
   ;; user's scripts.
   ;;
-  ;; Bug fix for version 0.3.
+  ;; Bug fix for version 0.0.3.
   ;;
   ;; The above definitions of add_plus and add_minus don't work when the script
   ;; doesn't print a newline on its last line of output.  See

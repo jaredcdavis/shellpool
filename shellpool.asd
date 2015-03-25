@@ -42,7 +42,7 @@
 
 (defsystem "shellpool"
   :description "A library for running external programs from Common Lisp. (https://github.org/jaredcdavis/shellpool)"
-  :version "0.0.3-dev"
+  :version "0.0.3"
   :author "Jared Davis <jared@kookamara.com>, Kookamara LLC"
   :license "An MIT/X11-style license; see the file LICENSE."
   :depends-on (:trivial-features
