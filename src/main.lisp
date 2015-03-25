@@ -821,16 +821,61 @@ shellpool_add_minus() {
         exit-status))))
 
 (defun run& (script)
-;; BOZO for some reason this isn't letting me run more than one instance of xclock.
   (check-type script string)
   (debug-msg "Going into run&.~%")
+
+  ;; What we want to do seems very simple:
+  ;;
+  ;;   1. Create a temporary file and write the script into it.
+  ;;   2. Run the script with `bash temp.sh &` (well, modulo some io
+  ;;      redirection to prevent any reading/printing).
+  ;;   3. Delete the temporary file.
+  ;;
+  ;; Unfortunately there is a tricky race condition here: how do we make sure
+  ;; that the `bash temp.sh &` command will read the script before we delete
+  ;; it?  Some approaches that won't work include:
+  ;;
+  ;;   1. Use something like (with-file-to-be-deleted tempfile ...) to have
+  ;;      Lisp delete it.  This doesn't work because there's no guarantee that
+  ;;      bash will even be started before Lisp gets a chance to unlink the
+  ;;      file.
+  ;;
+  ;;   2. Issue separate shell commands, e.g.,
+  ;;
+  ;;        bash temp.sh &
+  ;;        rm temp.sh
+  ;;
+  ;;      This is perhaps even less likely to work than having Lisp delete
+  ;;      the temp.sh file.
+  ;;
+  ;; A solution that probably would work would be to do something like this:
+  ;;
+  ;;      (bash temp.sh ; rm temp.sh) &
+  ;;
+  ;; I think this should be robust against any failures in temp.sh, and the
+  ;; only reason it would fail would be if the bash itself got killed somehow.
+  ;; However, note that this approach does have the disadvantage that the
+  ;; temporary script will continue to exist for as long as temp.sh is running.
+  ;;
+  ;; Given that, I think it's arguably most elegant to have the script simply
+  ;; delete itself.  Since the bash process executing the script will
+  ;; necessarily have a file handle open to the script, the unlink can happen
+  ;; immediately but the inode shouldn't get freed until the script exits.
+
   (let ((tempfile
          (cl-fad:with-output-to-temporary-file
           (stream :template "shellpool-%.tmp")
+
           ;; We don't need a #!/???/bash line.  We will invoke the script with
           ;; "bash tempfile" instead.  This avoids needing chmod and avoids
           ;; needing to know where bash lives.
+
+          ;; Step 1: delete yourself.  (See above comments)
+          (write-line "rm -- \"$0\"" stream)
+
+          ;; Step 2: do what the user said.
           (write-line script stream))))
+
     (with-state-lock
       (let* ((aux    (state-aux *state*))
              (aux-in (if (not aux)
@@ -838,20 +883,11 @@ shellpool_add_minus() {
                        (bash-in aux)))
              (filename (namestring tempfile))
 
-             ;; Subtle -- if just wrapped all of this with
-             ;; `(with-file-to-be-deleted tempfile`, there'd be no guarantee
-             ;; that the bash shell would run the script before Lisp deleted
-             ;; it.  So, delete it after the bash script runs.
-             ;;
-             ;; BOZO this might not be very good either.  It avoids the race
-             ;; but means that if the bash process doesn't finish then the file
-             ;; will still exist.  Probably we want to have the script delete
-             ;; itself first thing, instead.  But then we have to somehow get
-             ;; the filename into the script.  We could use an environment
-             ;; variable or $@ or something.
-
-             (cmd    (concatenate 'string
-                                  "(bash " filename " < /dev/null 2>&1 > /dev/null ; rm -- " filename ") &
+             ;; The use of disown here is intended to allow the background job
+             ;; to persist even if the Lisp process and/or its corresponding
+             ;; Bash shells are destroyed.
+             (cmd      (concatenate 'string
+                                    "(bash " filename " < /dev/null 2>&1 > /dev/null) &
 disown -h $!
 ")))
         (debug-msg "BG: ~s~%" cmd)

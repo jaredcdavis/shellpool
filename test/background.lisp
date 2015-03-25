@@ -30,50 +30,40 @@
 ;
 ; Original author: Jared Davis <jared@kookamara.com>
 
-; top.lsp -- top level Shellpool test suite
+; background.lisp -- tests of run& command
 
-(ql:quickload "shellpool")
-(ql:quickload "uiop")
+(defun basic-bg-test ()
+  (format t "Doing basic BG test.~%")
+  (let ((subname #-windows "sleep.pl"
+                 #+windows "perl"))
+    (when (has-process subname)
+      (error "Looks like ~s is running already, won't be able to test background jobs correctly."
+             subname))
+    (shellpool:run& "./sleep.pl 10")
+    (sleep 4)
+    (unless (has-process subname)
+      (error "Doesn't seem like ~s got started.~%" subname))
+    (sleep 10)
+    (when (has-process subname)
+      (error "Doesn't seem like ~s exited.~%" subname))))
 
-(format t "Features are ~s~%" *features*)
+(loop for i from 1 to 3 do
+      (basic-bg-test))
 
-#+lispworks
-(bt:start-multiprocessing)
 
-(let ((oops nil))
-  (format t "** Checking running a command before starting any shells.~%")
-  (handler-case
-    (progn (shellpool:run "echo hello")
-           (setq oops t))
-    (error (condition)
-           (declare (ignore condition))
-           (format t "OK: Got error as expected.~%")
-           nil))
-  (when oops
-    (error "Running a command without any shells worked?")))
+(defun basic-bg-test2 ()
+  (format t "Doing basic BG2 test.~%")
+  (shellpool:run& "rm hello.txt")
+  (sleep 3)
+  (when (probe-file "hello.txt")
+    (error "Somehow hello.txt exists?"))
+  (shellpool:run& "echo hello > hello.txt")
+  (sleep 3)
+  (basic-test "cat hello.txt" :stdout '("hello"))
+  (shellpool:run& "rm hello.txt")
+  (sleep 3)
+  (when (probe-file "hello.txt")
+    (error "Somehow hello.txt exists?")))
 
-(shellpool:start)
-
-(load "utils.lisp")
-
-(progn
-  (format t "~% -------- Doing basic tests -------------- ~%")
-  (load "basic.lisp"))
-
-(setq shellpool:*debug* t)
-
-(progn
-  (format t "~% -------- Doing kill tests --------------- ~%")
-  (load "kill.lisp"))
-
-(progn
-  (format t "~% -------- Doing background tests --------- ~%")
-  (load "background.lisp"))
-
-(format t "All tests passed.~%")
-(with-open-file (stream "test.ok"
-                        :direction :output
-                        :if-exists :supersede)
-  (format stream "All tests passed.~%"))
-
-(uiop:quit)
+(loop for i from 1 to 3 do
+      (basic-bg-test2))
