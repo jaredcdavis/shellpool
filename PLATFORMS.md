@@ -56,9 +56,6 @@ commands lack `stderr` support.  (Shellpool currently depends on being able to
 use both stderr and stdout to function.  It is probably not too difficult to
 rework this to avoid needing stderr.)
 
-Shellpool has not yet been tested on MacOS, but it will likely be very easy to
-port to this system and I expect to work on this soon.
-
 It would likely be very easy to port shellpool to other Unix-like operating
 systems that can run supported Lisps.  I would welcome patches that provide or
 improve support for particular Lisps or operating systems, or for adding
