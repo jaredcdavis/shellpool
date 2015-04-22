@@ -67,13 +67,23 @@ If shellpool isn't quite right for you, here are some related Lisp libraries.
 
 ## License and History
 
-Shellpool is Copyright (C) 2014-2015 [Kookamara LLC](http://www.kookamara.com/)
-and released under an [MIT style license](LICENSE).
+Shellpool is Copyright (C) 2014-2015 [Kookamara LLC](http://www.kookamara.com/).
+It has an [MIT/X11 style license](LICENSE).  It was written by
+[Jared Davis](mailto:jared@centtech.com).
 
 Shellpool is a successor to "tshell", a mechanism for running external programs
 from [Clozure Common Lisp](http://ccl.clozure.com/).  Tshell was developed by
 [Centaur Technology](http://www.centtech.com/) and was distributed as a library
-for [ACL2](http://www.cs.utexas.edu/users/moore/acl2), and was also released
-under the MIT license.
+for [ACL2](http://www.cs.utexas.edu/users/moore/acl2);  it was also released
+under the MIT license.  It was mainly used for running SAT solvers, which are
+programs that can easily get "stuck" on hard problems, and hence often need to
+be interrupted.  It worked very well for this purpose.
 
-Shellpool was written by [Jared Davis](mailto:jared@centtech.com).
+Unfortunately tshell was inherently single-threaded and wasn't portable beyond
+CCL on Linux.  Shellpool is a complete rewrite that solves these problems, by
+explicitly having a pool of shells (to support multiple threads), by adding
+compatibility wrappers (to support multiple Lisps), and by reworking the core
+Bash code (to support multiple OSes).
+
+Shellpool has now replaced Tshell in the ACL2 books and is now being used, in
+production, on an everyday basis.
