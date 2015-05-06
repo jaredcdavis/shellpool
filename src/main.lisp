@@ -223,6 +223,7 @@
   )
 
 (defun bash-alive-p (sh)
+  (declare (ignorable sh))
   #+ccl       t ;; BOZO implement me
   #+sbcl      (sb-ext:process-alive-p sh)
   #+cmucl     t ;; BOZO implement me
