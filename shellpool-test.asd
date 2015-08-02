@@ -30,42 +30,17 @@
 ;
 ; Original author: Jared Davis <jared@kookamara.com>
 
-; background.lisp -- tests of run& command
-
-(format t "~% -------- Doing background tests --------- ~%")
-
-(defun basic-bg-test ()
-  (format t "Doing basic BG test.~%")
-  (let ((subname #-windows "sleep.pl"
-                 #+windows "perl"))
-    (when (has-process subname)
-      (error "Looks like ~s is running already, won't be able to test background jobs correctly."
-             subname))
-    (shellpool:run& "test/sleep.pl 10")
-    (sleep 4)
-    (unless (has-process subname)
-      (error "Doesn't seem like ~s got started.~%" subname))
-    (sleep 10)
-    (when (has-process subname)
-      (error "Doesn't seem like ~s exited.~%" subname))))
-
-(loop for i from 1 to 3 do
-      (basic-bg-test))
-
-
-(defun basic-bg-test2 ()
-  (format t "Doing basic BG2 test.~%")
-  (shellpool:run& "rm hello.txt")
-  (sleep 3)
-  (when (probe-file "hello.txt")
-    (error "Somehow hello.txt exists?"))
-  (shellpool:run& "echo hello > hello.txt")
-  (sleep 3)
-  (basic-test "cat hello.txt" :stdout '("hello"))
-  (shellpool:run& "rm hello.txt")
-  (sleep 3)
-  (when (probe-file "hello.txt")
-    (error "Somehow hello.txt exists?")))
-
-(loop for i from 1 to 3 do
-      (basic-bg-test2))
+(defsystem "shellpool-test"
+  :description "Tests for the shellpool library."
+  :version "0.0.4-dev"
+  :author "Jared Davis <jared@kookamara.com>, Kookamara LLC"
+  :license "An MIT/X11-style license; see the file LICENSE."
+  :depends-on (:shellpool
+               :uiop
+               :cl-fad)
+  :components ((:file "test/utils")
+               (:file "test/basic")
+               (:file "test/kill")
+               (:file "test/background")
+               (:file "test/passed"))
+  :serial t)

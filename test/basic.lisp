@@ -32,6 +32,8 @@
 
 ; basic.lisp -- tests of basic return/output capture
 
+(format t "~% -------- Doing basic tests -------------- ~%")
+
 (defun run-and-gather (cmd)
   "Runs command, gathering output, returns (values status stdout stderr)."
   (format t "** Running command ~s~%" cmd)
@@ -99,7 +101,7 @@
 
 ; Test some more complex output interleaving.
 
-(basic-test "./test1.sh"
+(basic-test "test/test1.sh"
             :status 0
             :stdout '("stdout line 1" "stdout line 2" "stdout line 3")
             :stderr '("stderr line 1" "stderr line 2"))
@@ -109,7 +111,7 @@
 ; incrementally.  You should notice lag as the messages are printed, but you
 ; should see each message as it becomes available.
 
-(basic-test "./test2.sh"
+(basic-test "test/test2.sh"
             :status 2
             :stdout '("stdout line 1" "stdout line 2" "stdout line 3")
             :stderr '("stderr line 1" "stderr line 2"))

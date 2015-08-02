@@ -32,48 +32,5 @@
 
 ; top.lsp -- top level Shellpool test suite
 
-(ql:quickload "shellpool")
-(ql:quickload "uiop")
-
-(format t "Features are ~s~%" *features*)
-
-#+lispworks
-(bt:start-multiprocessing)
-
-(let ((oops nil))
-  (format t "** Checking running a command before starting any shells.~%")
-  (handler-case
-    (progn (shellpool:run "echo hello")
-           (setq oops t))
-    (error (condition)
-           (declare (ignore condition))
-           (format t "OK: Got error as expected.~%")
-           nil))
-  (when oops
-    (error "Running a command without any shells worked?")))
-
-(shellpool:start)
-
-(load "utils.lisp")
-
-(progn
-  (format t "~% -------- Doing basic tests -------------- ~%")
-  (load "basic.lisp"))
-
-(setq shellpool:*debug* t)
-
-(progn
-  (format t "~% -------- Doing kill tests --------------- ~%")
-  (load "kill.lisp"))
-
-(progn
-  (format t "~% -------- Doing background tests --------- ~%")
-  (load "background.lisp"))
-
-(format t "All tests passed.~%")
-(with-open-file (stream "test.ok"
-                        :direction :output
-                        :if-exists :supersede)
-  (format stream "All tests passed.~%"))
-
+(ql:quickload "shellpool-test" :verbose t)
 (uiop:quit)

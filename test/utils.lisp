@@ -32,6 +32,33 @@
 
 ; utils.lisp -- just some utility functions
 
+(format t "Features are ~s~%" *features*)
+
+#+lispworks
+(bt:start-multiprocessing)
+
+(let* ((dir (asdf:system-source-directory :shellpool))
+       (ext (cl-fad:merge-pathnames-as-directory dir "test/")))
+  (format t "Shellpool dir is ~s~%" dir)
+  (format t "Shellpool test dir is ~s~%" ext)
+  (uiop:chdir ext))
+
+(format t "CWD is ~s~%" (uiop:getcwd))
+
+(let ((oops nil))
+  (format t "** Checking running a command before starting any shells.~%")
+  (handler-case
+    (progn (shellpool:run "echo hello")
+           (setq oops t))
+    (error (condition)
+           (declare (ignore condition))
+           (format t "OK: Got error as expected.~%")
+           nil))
+  (when oops
+    (error "Running a command without any shells worked?")))
+
+(shellpool:start)
+
 (let ((sem   (bt-sem:make-semaphore))
       (lock  (bt:make-lock))
       (queue nil))
