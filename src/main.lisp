@@ -106,27 +106,6 @@
 ; Glue
 
 
-#-sbcl
-(defun find-bash ()
-  #+windows "bash.exe"
-  #-windows "bash")
-
-#+sbcl
-;; SBCL (on Linux, at least) won't successfully run "bash" all by itself.  So,
-;; on SBCL, try to find a likely bash.  BOZO this probably isn't great.  It
-;; would be better to search the user's PATH for which bash to use.
-(let ((found-bash))
-  (defun find-bash ()
-    (or found-bash
-        (let ((paths-to-try '("/bin/bash"
-                              "/usr/bin/bash"
-                              "/usr/local/bin/bash")))
-          (loop for path in paths-to-try do
-                (when (cl-fad::file-exists-p path)
-                  (setq found-bash path)
-                  (return-from find-bash path)))
-          (error "Bash not found among ~s" paths-to-try)))))
-
 #+(or allegro lispworks)
 (defstruct bashprocess
   (stdin)
@@ -134,7 +113,8 @@
   (stderr))
 
 (defun make-bash ()
-  (let ((bash (find-bash))
+  (let ((bash #+windows "bash.exe"
+              #-windows "bash")
         ;; For Windows, invoking Bash with "-o igncr" seems to basically solve
         ;; a bunch of errors due to carriage-return end of line stuff.
         ;; (Without this shellpool wasn't working at all.)
@@ -149,6 +129,7 @@
                      :sharing :external)
     #+sbcl
     (sb-ext:run-program bash args
+                        :search t
                         :wait nil
                         :input :stream
                         :output :stream
