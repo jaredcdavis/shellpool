@@ -625,7 +625,7 @@ shellpool_add_minus() {
     done
 }
 "
-               "(((bash " filename
+               "(((bash '" filename "'"
                " < /dev/null | shellpool_add_plus) 3>&1 1>&2 2>&3 | shellpool_add_minus) 2>&1"
                " ; printf \"\\n" +status-line+ " $?\\\n\" ) &" nl
                "echo " +pid-line+ " $! 1>&2" nl
@@ -652,7 +652,7 @@ shellpool_add_minus() {
            (stderr-exit   nil)
            (tempfile
             (cl-fad:with-output-to-temporary-file
-             (stream :template "shellpool-%.tmp")
+             (stream :template "temporary-files:shellpool-%.tmp")
              ;; Notes:
              ;;
              ;;  - We don't need a #!/???/bash line.  We will invoke the script
