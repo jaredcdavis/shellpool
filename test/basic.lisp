@@ -193,3 +193,5 @@
     (error "Started 2000 shells?")))
 
 
+(basic-test "echo \"  hello \""
+            :stdout '("  hello "))

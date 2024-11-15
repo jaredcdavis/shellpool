@@ -597,7 +597,7 @@ shellpool_add_plus() {
     eof=\"\"
     while [ -z \"$eof\" ]
     do
-	read line || eof=1
+	IFS= read -r line || eof=1
 	if [ -z \"$eof\" ]
 	then
 	    echo \"+$line\";
@@ -614,7 +614,7 @@ shellpool_add_minus() {
     eof=\"\"
     while [ -z \"$eof\" ]
     do
-	read line || eof=1
+	IFS= read -r line || eof=1
 	if [ -z \"$eof\" ]
 	then
 	    echo \"-$line\";
